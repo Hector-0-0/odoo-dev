@@ -1,0 +1,138 @@
+================================================================
+NOTAS: __init__.py en Odoo
+================================================================
+
+El __init__.py convierte una carpeta en un paquete Python.
+Sin él, Python (y por tanto Odoo) ignora los archivos .py
+que haya dentro de esa carpeta.
+En Odoo se usa en dos niveles: en la raíz del módulo y
+dentro de la carpeta models/ (y otras carpetas como controllers/,
+wizard/, etc.).
+
+----------------------------------------------------------------
+LOS DOS __init__.py QUE NECESITAS
+----------------------------------------------------------------
+
+Todo módulo Odoo tiene al menos esta estructura mínima:
+
+  mi_modulo/
+  ├── __init__.py          ← raíz del módulo
+  ├── __manifest__.py
+  └── models/
+      ├── __init__.py      ← dentro de models
+      └── mi_modelo.py
+
+Ambos archivos son obligatorios si tienes modelos.
+Si falta cualquiera de los dos, Odoo no carga tus modelos
+y no verás ningún error claro, simplemente no funcionarán.
+
+----------------------------------------------------------------
+__init__.py DE LA RAÍZ DEL MÓDULO
+----------------------------------------------------------------
+
+Propósito:
+  Declara qué subcarpetas (subpaquetes) forman parte del módulo.
+  Odoo lo lee al instalar o arrancar para saber qué importar.
+
+Sintaxis:
+  Se usa "from . import" para cada subcarpeta que tenga código.
+
+Ejemplo básico:
+  from . import models
+
+Ejemplo con más carpetas:
+  from . import models, controllers, wizard, report
+
+Reglas importantes:
+  - Solo importa carpetas que tengan su propio __init__.py.
+  - El orden no suele importar aquí, pero es buena práctica
+    poner "models" primero.
+  - No importes archivos .py directamente desde aquí,
+    eso se hace en el __init__.py de cada subcarpeta.
+  - Si agregas una carpeta nueva (ej: wizard/) debes añadirla
+    aquí también o Odoo no la cargará.
+
+----------------------------------------------------------------
+__init__.py DE LA CARPETA models/
+----------------------------------------------------------------
+
+Propósito:
+  Declara qué archivos .py de modelos debe cargar Odoo.
+  Cada archivo .py suele contener una clase que hereda
+  de models.Model.
+
+Sintaxis:
+  Se usa "from . import" para cada archivo sin la extensión .py.
+
+Ejemplo básico (un solo modelo):
+  from . import mi_modelo
+
+Ejemplo con varios modelos:
+  from . import reclamacion
+  from . import reclamacion_linea
+  from . import res_partner
+
+Reglas importantes:
+  - Importa solo los archivos que contienen clases de modelos.
+  - El orden puede importar si un modelo hereda de otro
+    definido en el mismo módulo: importa primero el padre.
+  - Si creas un archivo nuevo en models/ y no lo añades aquí,
+    Odoo no lo cargará aunque el archivo exista.
+  - Convención: un archivo por modelo, nombrado igual que
+    el modelo en snake_case. Ej: sale.order → sale_order.py
+
+----------------------------------------------------------------
+ERRORES COMUNES
+----------------------------------------------------------------
+
+Error: "models no carga aunque el archivo existe"
+  Causa:   Falta importar el archivo en models/__init__.py
+  Solución: Agregar "from . import nombre_archivo"
+
+Error: "módulo instalado pero los modelos no aparecen"
+  Causa:   Falta "from . import models" en el __init__.py raíz
+  Solución: Añadir la importación en el __init__.py de la raíz
+
+Error: "cambié un modelo pero no se refleja"
+  Causa:   Pycache desactualizado o módulo no actualizado
+  Solución: Actualizar el módulo desde Odoo o borrar __pycache__
+
+----------------------------------------------------------------
+ESTRUCTURA COMPLETA DE EJEMPLO
+----------------------------------------------------------------
+
+Estructura de carpetas:
+
+  l10n_pe_libro_reclamaciones/
+  ├── __init__.py
+  ├── __manifest__.py
+  ├── models/
+  │   ├── __init__.py
+  │   ├── reclamacion.py
+  │   └── reclamacion_linea.py
+  ├── controllers/
+  │   ├── __init__.py
+  │   └── portal.py
+  └── views/
+      └── reclamacion_views.xml   ← views NO necesita __init__.py
+                                     porque son XML, no Python
+
+__init__.py de la raíz:
+
+  from . import models, controllers
+
+__init__.py de models/:
+
+  from . import reclamacion
+  from . import reclamacion_linea
+
+__init__.py de controllers/:
+
+  from . import portal
+
+Nota: Las carpetas views/, security/, data/, static/ NO necesitan
+      __init__.py porque contienen XML, CSV o archivos estáticos,
+      no código Python. Solo las carpetas con archivos .py
+      necesitan su __init__.py.
+
+================================================================
