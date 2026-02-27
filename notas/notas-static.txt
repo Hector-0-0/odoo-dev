@@ -1,0 +1,127 @@
+================================================================
+NOTAS: Carpeta static/ en Odoo
+================================================================
+
+La carpeta static/ contiene todos los archivos estáticos del módulo:
+imágenes, CSS, JavaScript, fuentes, etc. Odoo los sirve directamente
+al navegador sin procesamiento del servidor.
+
+IMPORTANTE: Todo lo que está en static/ es público y accesible
+desde el navegador via URL. No pongas información sensible aquí.
+
+URL de acceso: /[nombre_modulo]/static/[ruta_del_archivo]
+Ejemplo: /l10n_pe_libro_reclamaciones/static/src/css/styles.css
+
+----------------------------------------------------------------
+ESTRUCTURA COMPLETA
+----------------------------------------------------------------
+
+l10n_pe_libro_reclamaciones/
+└── static/
+    ├── description/         → info visual del módulo en la tienda
+    │   ├── index.html       → descripción del módulo (reemplaza
+    │   │                      al 'description' del manifest)
+    │   └── icon.png         → ícono del módulo (128x128px)
+    │
+    └── src/                 → código fuente frontend
+        ├── css/             → hojas de estilo
+        │   └── styles.css
+        ├── js/              → JavaScript vanilla o legacy
+        │   └── script.js
+        ├── xml/             → templates OWL (componentes frontend)
+        │   └── component.xml
+        └── img/             → imágenes usadas en el frontend
+            └── banner.png
+
+----------------------------------------------------------------
+CARPETA description/
+----------------------------------------------------------------
+
+Es la más importante para la presentación del módulo.
+
+icon.png
+  - Ícono que aparece en la lista de apps de Odoo
+  - Tamaño recomendado: 128x128px
+  - Formato: PNG con fondo transparente o de color
+  - Sin este archivo aparece el cubo genérico de Odoo
+  - Odoo también acepta icon.svg
+
+index.html
+  - Contenido que Odoo muestra en la pestaña "Información"
+    del módulo dentro de Apps
+  - Si existe, reemplaza completamente al 'description' del manifest
+  - Si no existe, Odoo muestra el 'description' del manifest como
+    texto simple
+  - Usar clases CSS propias de Odoo para mejor presentación
+
+Ejemplo de index.html básico:
+  <section class="oe_container">
+      <div class="oe_row oe_spaced">
+          <h2 class="oe_slogan">Nombre del módulo</h2>
+          <h3 class="oe_slogan">Descripción corta</h3>
+          <p>Descripción larga del módulo.</p>
+      </div>
+  </section>
+
+----------------------------------------------------------------
+CARPETA src/
+----------------------------------------------------------------
+
+Contiene el código fuente del frontend del módulo.
+Debe declararse en el manifest dentro de 'assets' para que
+Odoo lo cargue. Sin esa declaración Odoo ignora estos archivos.
+
+src/css/
+  - Archivos CSS para estilos del módulo
+  - Se declaran en assets bajo el bundle correspondiente:
+    'web.assets_backend'  → estilos del backend (panel admin)
+    'web.assets_frontend' → estilos del frontend (sitio web)
+
+src/js/
+  - JavaScript vanilla para funcionalidades simples
+  - Para Odoo 16+ se recomienda usar OWL en lugar de JS vanilla
+
+src/xml/
+  - Templates XML para componentes OWL
+  - OWL es el framework JavaScript propio de Odoo (desde v14)
+  - Similar a React: componentes, props, estado reactivo
+
+src/img/
+  - Imágenes usadas en vistas, templates o el index.html
+  - No confundir con icon.png que va en description/
+
+----------------------------------------------------------------
+DECLARACIÓN EN MANIFEST
+----------------------------------------------------------------
+
+Para que Odoo cargue los archivos de src/ hay que declararlos
+en el manifest dentro de 'assets':
+
+'assets': {
+    'web.assets_backend': [
+        'l10n_pe_libro_reclamaciones/static/src/css/styles.css',
+        'l10n_pe_libro_reclamaciones/static/src/js/script.js',
+        'l10n_pe_libro_reclamaciones/static/src/xml/component.xml',
+    ],
+    'web.assets_frontend': [
+        'l10n_pe_libro_reclamaciones/static/src/css/styles.css',
+    ],
+},
+
+Bundles más usados:
+  'web.assets_backend'  → se carga en el panel de administración
+  'web.assets_frontend' → se carga en el sitio web público
+  'web.assets_common'   → se carga en ambos
+
+----------------------------------------------------------------
+RESUMEN: QUÉ VA DÓNDE
+----------------------------------------------------------------
+
+  static/description/icon.png     → ícono del módulo en Apps
+  static/description/index.html   → descripción visual en Apps
+  static/src/css/                 → estilos CSS
+  static/src/js/                  → JavaScript / OWL
+  static/src/xml/                 → templates OWL
+  static/src/img/                 → imágenes del frontend
+
+================================================================
