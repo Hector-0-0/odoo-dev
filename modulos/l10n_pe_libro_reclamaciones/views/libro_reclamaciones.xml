@@ -1,0 +1,71 @@
+<odoo>
+
+    <!--VISTAS-->
+
+    <record id="view_list_libro_reclamaciones" model="ir.ui.view">
+        <field name="name">view.list.libro.reclamaciones</field>
+        <field name="model">libro.reclamaciones</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="name"/>
+                <field name="state"/>
+                <field name="priority" widget="priority"/>
+                <field name="company_id"/>
+                <field name="claim_user_id"/>                
+            </list>
+        </field>
+    </record>
+
+    <record id="view_form_libro_reclamaciones" model="ir.ui.view">
+        <field name="name">view.form.libro.reclamaciones</field>
+        <field name="model">libro.reclamaciones</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <field name="state" string="Estado" widget="statusbar"/>
+                </header>
+                <sheet>
+                    <h2>
+                        <field name="name" readonly="1"/>
+                    </h2>
+                    <group>
+                        <field name="priority" widget="priority"/>
+                        <field name="company_id" readonly="1" force_save="1" options="{'no_open':1}"/>
+                        <field name="claim_user_id" options="{'no_open':1,'no_create':1,'no_creat_edit':1}"/>
+                    </group>
+                    <group string="Datos del consumidor">
+                        <group>
+                            <field name="consumer_type" widget="radio"/>
+                        </group>
+                        <group>
+                            <field name="consumer_phone"/>
+                        </group>
+                    </group>
+                    <group string="Detalles del reclamo">                        
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!--ACCION DE VENTANA-->
+
+    <record id="action_view_libro_reclamaciones" model="ir.actions.act_window">
+        <field name="name">Registros</field>
+        <field name="res_model">libro.reclamaciones</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+
+    <!--MENUS-->
+
+    <menuitem id="menu_main_libro_reclamaciones" 
+                name="Libro de Reclamaciones" 
+                sequence="21"/>
+
+    <menuitem id="menu_registro_reclamos" 
+                name="Registros"
+                parent="menu_main_libro_reclamaciones" 
+                action="action_view_libro_reclamaciones" />
+
+</odoo>

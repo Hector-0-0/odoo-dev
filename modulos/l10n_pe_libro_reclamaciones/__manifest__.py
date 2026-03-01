@@ -15,4 +15,8 @@ cumplimiento legal y mejorando la atención al cliente.
     'installable': True,
     'application': True,
     'license': 'LGPL-3',
+    'data': [
+        'security/ir_model_access.xml',
+        'views/libro_reclamaciones.xml',
+    ],
 }
