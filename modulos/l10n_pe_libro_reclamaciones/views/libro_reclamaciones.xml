@@ -35,10 +35,43 @@
                     </group>
                     <group string="Datos del consumidor">
                         <group>
-                            <field name="consumer_type" widget="radio"/>
+                            <field name="consumer_type" widget="radio" options="{'horizontal': 1}"/>
+                            <field name="consumer_company_name" invisible="consumer_type != 'company'"
+                                                                required="consumer_type == 'company'"
+                                                                readonly="state!='new'"/>
+                            <field name="consumer_company_document" invisible="consumer_type != 'company'"
+                                                                required="consumer_type == 'company'"
+                                                                readonly="state!='new'"/>
+                            <field name="consumer_name" invisible="consumer_type != 'individual'"
+                                                                required="consumer_type == 'individual'"
+                                                                readonly="state!='new'"/>
+                            <field name="consumer_lastname" invisible="consumer_type != 'individual'"
+                                                                required="consumer_type == 'individual'"
+                                                                readonly="state!='new'"/>
+                            <field name="consume_email" readonly="state!='new'"/>
+                            <field name="consumer_document_type" widget="radio" options="{'horizontal': 1}"/>
+                            <field name="consumer_document"/>
                         </group>
                         <group>
-                            <field name="consumer_phone"/>
+                            <field name="consumer_phone" placeholder="+51 999999999"/>
+                            <field name="consumer_address" placeholder="Avenida, Calle ..."/>
+                            <field name="consumer_country_id"
+                                        options="{'no_open':1,'no_create':1,'no_creat_edit':1}"/>
+                            <field name="consumer_state_id" string="Departamento" 
+                                        domain="[('country_id', '=', consumer_country_id)]"
+                                        options="{'no_open':1,'no_create':1,'no_creat_edit':1}"/>
+                            <field name="consumer_province_id" string="Provincia" 
+                                        domain="[('state_id', '=', consumer_state_id)]"
+                                        options="{'no_open':1,'no_create':1,'no_creat_edit':1}"/>
+                            <field name="consumer_district_id" string="Distrito" domain="[('city_id', '=', consumer_province_id)]"
+                                        options="{'no_open':1,'no_create':1,'no_creat_edit':1}"/>
+                            <field name="consumer_younger" invisible="consumer_type != 'individual'" widget="boolean_toggle"/>
+                        </group>
+                        <group string="Datos del representante legal" invisible="consumer_type != 'individual' or not consumer_younger">
+                            <field name="consumer_younger_parent_name" invisible="consumer_type != 'individual' or not consumer_younger"/>
+                            <field name="consumer_younger_parent_lastname" invisible="consumer_type != 'individual' or not consumer_younger"/>
+                            <field name="consumer_younger_parent_document_type" widget="radio" options="{'horizontal': 1}" invisible="consumer_type != 'individual' or not consumer_younger"/>
+                            <field name="consumer_younger_parent_document" invisible="consumer_type != 'individual' or not consumer_younger"/>
                         </group>
                     </group>
                     <group string="Detalles del reclamo">                        

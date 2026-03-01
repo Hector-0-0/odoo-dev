@@ -1,0 +1,362 @@
+================================================================
+NOTAS: Atributos de las Vistas en Odoo
+================================================================
+
+Los atributos son propiedades que se agregan a las etiquetas
+XML para modificar el comportamiento o apariencia de los
+campos y elementos en las vistas.
+
+================================================================
+PARTE 1: ATRIBUTOS DE <field>
+================================================================
+
+El atributo más usado en las vistas. Controla cómo se muestra
+y comporta cada campo individual.
+
+----------------------------------------------------------------
+string
+----------------------------------------------------------------
+
+Cambia la etiqueta visible del campo en la interfaz.
+Si no se pone, usa el string definido en el modelo Python.
+
+Ejemplo:
+  <field name="name" string="Número de Reclamo"/>
+  <field name="claim_user_id" string="Encargado"/>
+
+----------------------------------------------------------------
+readonly
+----------------------------------------------------------------
+
+Hace el campo no editable. El usuario puede verlo pero no
+modificarlo. Acepta 1/0 o una expresión condicional.
+
+Ejemplo:
+  <!-- Siempre readonly -->
+  <field name="name" readonly="1"/>
+
+  <!-- Readonly solo cuando state es resolved -->
+  <field name="name" readonly="state == 'resolved'"/>
+
+----------------------------------------------------------------
+required
+----------------------------------------------------------------
+
+Hace el campo obligatorio en la vista. El formulario no se
+puede guardar si está vacío. Acepta 1/0 o expresión.
+
+Ejemplo:
+  <!-- Siempre obligatorio -->
+  <field name="consumer_name" required="1"/>
+
+  <!-- Obligatorio solo cuando consumer_type es 'company' -->
+  <field name="consumer_company_name"
+         required="consumer_type == 'company'"/>
+
+----------------------------------------------------------------
+invisible
+----------------------------------------------------------------
+
+Oculta el campo completamente. El campo sigue existiendo
+en el modelo pero no se ve en la interfaz. Acepta 1/0
+o una expresión condicional.
+
+Ejemplo:
+  <!-- Siempre invisible -->
+  <field name="campo_interno" invisible="1"/>
+
+  <!-- Visible solo cuando consumer_type es 'company' -->
+  <field name="consumer_company_name"
+         invisible="consumer_type != 'company'"/>
+  <field name="consumer_company_document"
+         invisible="consumer_type != 'company'"/>
+
+----------------------------------------------------------------
+widget
+----------------------------------------------------------------
+
+Cambia cómo se renderiza visualmente el campo. Odoo tiene
+widgets predefinidos para distintos tipos de datos.
+
+Widgets más usados:
+
+  "statusbar"
+    Muestra un Selection como barra de progreso en el header.
+    Solo para vistas form.
+    <field name="state" widget="statusbar"/>
+
+  "priority"
+    Muestra un Selection como estrellas (máximo 3 estrellas).
+    Requiere valores 0, 1, 2, 3.
+    <field name="priority" widget="priority"/>
+
+  "many2many_tags"
+    Muestra un Many2many como etiquetas/chips de colores.
+    <field name="tag_ids" widget="many2many_tags"/>
+
+  "radio"
+    Muestra un Selection como botones de opción.
+    <field name="consumer_type" widget="radio"/>
+
+  "toggle_button"
+    Muestra un Boolean como botón que se activa/desactiva.
+    <field name="activo" widget="toggle_button"/>
+
+  "monetary"
+    Muestra un Float con símbolo de moneda.
+    <field name="amount" widget="monetary"/>
+
+  "html"
+    Muestra un campo Text como editor HTML enriquecido.
+    <field name="descripcion" widget="html"/>
+
+  "char_emojis"
+    Muestra un Char con soporte de emojis.
+    <field name="nombre" widget="char_emojis"/>
+
+  "image"
+    Muestra un campo Binary como imagen.
+    <field name="foto" widget="image"/>
+
+  "pdf_viewer"
+    Muestra un campo Binary como visor de PDF.
+    <field name="documento" widget="pdf_viewer"/>
+
+----------------------------------------------------------------
+options
+----------------------------------------------------------------
+
+Pasa opciones adicionales al campo o widget en formato
+de diccionario JSON. Cada widget tiene sus propias opciones.
+
+Ejemplo:
+  <!-- Desactiva el botón de abrir el registro relacionado -->
+  <field name="company_id" options="{'no_open': 1}"/>
+
+  <!-- Desactiva crear y editar desde el campo Many2one -->
+  <field name="partner_id" options="{'no_create': 1,
+                                      'no_edit': 1}"/>
+
+  <!-- En statusbar, muestra solo ciertos estados -->
+  <field name="state" widget="statusbar"
+         options="{'statusbar_visible': 'new,resolved'}"/>
+
+----------------------------------------------------------------
+force_save
+----------------------------------------------------------------
+
+Fuerza que se guarde el valor aunque el campo sea readonly.
+Sin esto, Odoo ignora el valor de campos readonly al guardar.
+
+Ejemplo:
+  <field name="company_id" readonly="1" force_save="1"/>
+
+----------------------------------------------------------------
+nolabel
+----------------------------------------------------------------
+
+Oculta la etiqueta del campo (el texto a la izquierda).
+Útil cuando el contexto hace obvia la función del campo.
+
+Ejemplo:
+  <field name="name" nolabel="1"/>
+
+----------------------------------------------------------------
+placeholder
+----------------------------------------------------------------
+
+Texto de ayuda que aparece dentro del campo cuando está vacío.
+Solo funciona en campos Char y Text.
+
+Ejemplo:
+  <field name="consumer_email" placeholder="ejemplo@correo.com"/>
+  <field name="consumer_phone" placeholder="+51 999 999 999"/>
+
+----------------------------------------------------------------
+domain
+----------------------------------------------------------------
+
+Filtra los registros disponibles en campos Many2one y Many2many.
+Usa la sintaxis de dominio de Odoo.
+
+Ejemplo:
+  <!-- Solo mostrar usuarios internos como responsable -->
+  <field name="claim_user_id"
+         domain="[('share', '=', False)]"/>
+
+  <!-- Solo empresas peruanas -->
+  <field name="company_id"
+         domain="[('country_id.code', '=', 'PE')]"/>
+
+----------------------------------------------------------------
+context
+----------------------------------------------------------------
+
+Pasa valores al contexto cuando se abre un registro relacionado.
+Se usa para pre-rellenar campos al crear desde un Many2one.
+
+Ejemplo:
+  <field name="order_line_ids"
+         context="{'default_order_id': active_id}"/>
+
+================================================================
+PARTE 2: ATRIBUTOS DE CONTENEDORES
+================================================================
+
+----------------------------------------------------------------
+<group> - atributos
+----------------------------------------------------------------
+
+  string    → título visible del grupo
+  col       → número de columnas (default: 2)
+  invisible → oculta el grupo entero con expresión
+
+Ejemplo:
+  <group string="Datos del Consumidor" col="2">
+      <field name="consumer_name"/>
+      <field name="consumer_email"/>
+  </group>
+
+  <!-- Grupo visible solo para empresas -->
+  <group string="Datos de Empresa"
+         invisible="consumer_type != 'company'">
+      <field name="consumer_company_name"/>
+      <field name="consumer_company_document"/>
+  </group>
+
+----------------------------------------------------------------
+<page> dentro de <notebook> - atributos
+----------------------------------------------------------------
+
+  string    → nombre de la pestaña
+  invisible → oculta la pestaña con expresión
+
+Ejemplo:
+  <notebook>
+      <page string="Consumidor">
+          <group>
+              <field name="consumer_name"/>
+          </group>
+      </page>
+      <page string="Empresa"
+            invisible="consumer_type != 'company'">
+          <group>
+              <field name="consumer_company_name"/>
+          </group>
+      </page>
+  </notebook>
+
+----------------------------------------------------------------
+<list> - atributos
+----------------------------------------------------------------
+
+  string        → título de la vista lista
+  editable      → permite editar registros directo en la lista
+                  valores: "top" (nueva fila arriba) o
+                           "bottom" (nueva fila abajo)
+  decoration-*  → colorea filas según condición
+
+Ejemplo:
+  <list string="Reclamaciones"
+        editable="bottom"
+        decoration-danger="state == 'cancel'"
+        decoration-success="state == 'resolved'"
+        decoration-warning="state == 'in_progress'">
+      <field name="name"/>
+      <field name="state"/>
+  </list>
+
+Colores disponibles para decoration-*:
+  decoration-danger  → rojo
+  decoration-warning → amarillo/naranja
+  decoration-success → verde
+  decoration-info    → azul claro
+  decoration-muted   → gris
+  decoration-bf      → negrita
+  decoration-it      → cursiva
+
+----------------------------------------------------------------
+<form> - atributos
+----------------------------------------------------------------
+
+  string → título de la ventana del formulario
+
+Ejemplo:
+  <form string="Libro de Reclamaciones">
+
+----------------------------------------------------------------
+<header> dentro de <form>
+----------------------------------------------------------------
+
+Zona especial en la parte superior del formulario.
+Se usa para el statusbar y botones de acción principales.
+
+Ejemplo:
+  <header>
+      <button name="action_confirmar"
+              string="Confirmar"
+              type="object"
+              class="btn-primary"/>
+      <field name="state" widget="statusbar"/>
+  </header>
+
+================================================================
+PARTE 3: ATRIBUTOS DE <button>
+================================================================
+
+Los botones ejecutan acciones dentro de las vistas.
+
+  name    → nombre del método Python a ejecutar
+  string  → texto visible del botón
+  type    → "object" ejecuta método Python del modelo
+             "action" abre una acción de ventana
+  class   → estilo visual del botón
+            "btn-primary"   → azul (acción principal)
+            "btn-secondary" → gris (acción secundaria)
+            "btn-danger"    → rojo (acción destructiva)
+  confirm → mensaje de confirmación antes de ejecutar
+  invisible → oculta el botón con expresión
+
+Ejemplo:
+  <button name="action_resolver"
+          string="Marcar como Resuelto"
+          type="object"
+          class="btn-primary"
+          confirm="¿Está seguro de resolver este reclamo?"
+          invisible="state == 'resolved'"/>
+
+================================================================
+PARTE 4: EXPRESIONES CONDICIONALES
+================================================================
+
+Los atributos readonly, required e invisible aceptan
+expresiones que evalúan campos del mismo registro.
+No necesitan comillas adicionales, usan el nombre del campo
+directamente.
+
+Ejemplos:
+  <!-- Un campo -->
+  invisible="state == 'cancel'"
+
+  <!-- Múltiples condiciones con and/or -->
+  invisible="state == 'cancel' or state == 'resolved'"
+  readonly="state != 'new' and state != 'in_progress'"
+
+  <!-- Comparación con booleano -->
+  invisible="activo == False"
+
+  <!-- Comparación con valor numérico -->
+  readonly="priority == '3'"
+
+Nota: En versiones anteriores a Odoo 17 estas expresiones
+      se escribían dentro de attrs={} como diccionario Python.
+      En Odoo 17 y 18 se escriben directamente como atributo.
+
+  <!-- Forma antigua (Odoo 16 y anteriores) -->
+  <field name="campo"
+         attrs="{'invisible': [('state', '=', 'cancel')]}"/>
+
+  <!-- Forma nueva (Odoo 17 y 18) -->
+  <field name="campo" invisible="state == 'cancel'"/>
+
+================================================================
