@@ -59,6 +59,64 @@ Grupos más usados de Odoo:
   base.group_public      → usuario público (sin login)
 
 ----------------------------------------------------------------
+ir_model_access.xml (formato alternativo al CSV)
+----------------------------------------------------------------
+
+Hace exactamente lo mismo que el CSV pero en formato XML.
+Algunos desarrolladores prefieren este formato para mantener
+todo en XML y no mezclar formatos en la carpeta security/.
+
+Estructura de la etiqueta record:
+  <record id="..." model="...">
+
+  id    → identificador externo (XML ID) del registro.
+          Nombre único que Odoo usa para identificar este
+          permiso. Se usa para referenciarlo con ref="".
+
+  model → tabla de la BD donde se inserta el registro.
+          Siempre es "ir.model.access" para permisos CRUD.
+          Es equivalente a un INSERT en esa tabla.
+
+Ejemplo básico (acceso total para todos los usuarios):
+  <odoo>
+      <record id="access_libro_reclamaciones"
+              model="ir.model.access">
+          <field name="name">access_libro_reclamaciones</field>
+          <field name="model_id"
+                 ref="model_libro_reclamaciones"/>
+          <field name="group_id"
+                 ref="base.group_user"/>
+          <field name="perm_read"   eval="1"/>
+          <field name="perm_write"  eval="1"/>
+          <field name="perm_create" eval="1"/>
+          <field name="perm_unlink" eval="1"/>
+      </record>
+  </odoo>
+
+Comparación CSV vs XML (resultado idéntico en la BD):
+
+  CSV:
+  id,name,model_id,group_id,perm_read,perm_write,perm_create,perm_unlink
+  access_libro_reclamaciones,access_libro_reclamaciones,model_libro_reclamaciones,base.group_user,1,1,1,1
+
+  XML:
+  <record id="access_libro_reclamaciones" model="ir.model.access">
+      <field name="name">access_libro_reclamaciones</field>
+      <field name="model_id" ref="model_libro_reclamaciones"/>
+      <field name="group_id" ref="base.group_user"/>
+      <field name="perm_read"   eval="1"/>
+      <field name="perm_write"  eval="1"/>
+      <field name="perm_create" eval="1"/>
+      <field name="perm_unlink" eval="1"/>
+  </record>
+
+Nota: La etiqueta <record id="..." model="..."> es la forma
+      estándar de crear cualquier registro en Odoo desde XML.
+      No es exclusiva de permisos, se usa en vistas, menús,
+      datos, reportes, etc. Siempre significa lo mismo:
+      "inserta o actualiza este registro en esa tabla".
+
+----------------------------------------------------------------
 security.xml
 ----------------------------------------------------------------
 
