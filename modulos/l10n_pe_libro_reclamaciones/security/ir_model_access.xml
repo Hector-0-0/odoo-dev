@@ -3,7 +3,7 @@
         <field name="name">model.access.libro.reclamaciones</field>
         <field name="model_id" ref="l10n_pe_libro_reclamaciones.model_libro_reclamaciones"/>
         <!--nombremodulo.model_nombremodelo-->
-        <field name="group_id" ref="base.group_user"/>
+        <field name="group_id" ref="l10n_pe_libro_reclamaciones.res_groups_libro_reclamaciones_user"/>
         <field name="perm_read" eval="1"/>
         <field name="perm_write" eval="1"/>
         <field name="perm_create" eval="1"/>

@@ -22,6 +22,18 @@
         <field name="arch" type="xml">
             <form>
                 <header>
+                    <button name="action_in_process" string="En Progreso" 
+                            type="object" class="btn-primary" 
+                            invisible="state != 'new'"/>
+                    <button name="action_claim_cancel" string="Cancelar" 
+                            type="object" class="btn-danger" groups="l10n_pe_libro_reclamaciones.res_groups_libro_reclamaciones_admin" 
+                            invisible="state not in ['in_process']"/>
+                    <button name="action_revert" string="Revertir Reclamo" 
+                            type="object" class="btn-warning" groups="l10n_pe_libro_reclamaciones.res_groups_libro_reclamaciones_admin" 
+                            invisible="state != 'cancel'"/>
+                    <button name="action_claim_resolved" string="Resolver Reclamo" 
+                            type="object" class="btn-success" groups="l10n_pe_libro_reclamaciones.res_groups_libro_reclamaciones_admin" 
+                            invisible="state != 'in_process'"/>+
                     <field name="state" string="Estado" widget="statusbar"/>
                 </header>
                 <sheet>
@@ -33,7 +45,7 @@
                         <field name="company_id" readonly="1" force_save="1" options="{'no_open':1}"/>
                         <field name="claim_user_id" options="{'no_open':1,'no_create':1,'no_creat_edit':1}"/>
                     </group>
-                    <group string="Datos del consumidor">
+                    <group string="DATOS DEL CONSUMIDOR O USUARIO">
                         <group>
                             <field name="consumer_type" widget="radio" options="{'horizontal': 1}"/>
                             <field name="consumer_company_name" invisible="consumer_type != 'company'"
@@ -67,14 +79,26 @@
                                         options="{'no_open':1,'no_create':1,'no_creat_edit':1}"/>
                             <field name="consumer_younger" invisible="consumer_type != 'individual'" widget="boolean_toggle"/>
                         </group>
-                        <group string="Datos del representante legal" invisible="consumer_type != 'individual' or not consumer_younger">
+                        <group string="DATOS DEL REPRESENTANTE LEGAL" invisible="consumer_type != 'individual' or not consumer_younger">
                             <field name="consumer_younger_parent_name" invisible="consumer_type != 'individual' or not consumer_younger"/>
                             <field name="consumer_younger_parent_lastname" invisible="consumer_type != 'individual' or not consumer_younger"/>
                             <field name="consumer_younger_parent_document_type" widget="radio" options="{'horizontal': 1}" invisible="consumer_type != 'individual' or not consumer_younger"/>
                             <field name="consumer_younger_parent_document" invisible="consumer_type != 'individual' or not consumer_younger"/>
                         </group>
                     </group>
-                    <group string="Detalles del reclamo">                        
+                    <group string="DATOS DEL BIEN CONTRATADO">
+                        <field name="product_type" widget="radio" options="{'horizontal': 1}"/>
+                        <field name="product_name"/>
+                        <field name="order_name"/>
+                        <field name="product_id"/>
+                        <field name="date_order"/>
+                    </group>
+                    <group string="DETALLE DEL RECLAMO O QUEJA">
+                        <field name="claim_type" widget="radio" options="{'horizontal': 1}"/>
+                        <field name="claim_detail"/>
+                        <field name="claim_request"/>
+                        <field name="claim_amount"/>
+                        <field name="currency_id"/>
                     </group>
                 </sheet>
             </form>

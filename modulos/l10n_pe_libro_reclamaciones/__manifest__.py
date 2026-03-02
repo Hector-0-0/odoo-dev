@@ -16,7 +16,9 @@ cumplimiento legal y mejorando la atención al cliente.
     'application': True,
     'license': 'LGPL-3',
     'data': [
+        'security/res_groups.xml',
         'security/ir_model_access.xml',
+        'security/ir_rule.xml',
         'views/libro_reclamaciones.xml',
     ],
 }

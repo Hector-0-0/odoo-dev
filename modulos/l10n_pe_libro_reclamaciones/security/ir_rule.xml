@@ -1,0 +1,8 @@
+<odoo>
+    <record id="rule_libro_reclamaciones_multicompany" model="ir.rule">
+        <field name="name">Regla Multicompany</field>
+        <field name="model_id" ref="l10n_pe_libro_reclamaciones.model_libro_reclamaciones"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+        <field name="global" eval="True"/>
+    </record>
+</odoo>
