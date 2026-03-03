@@ -1,0 +1,645 @@
+================================================================
+NOTAS: DECORADORES EN ODOO (VERSIÓN COMPLETA)
+================================================================
+
+Los decoradores son funciones que modifican métodos.
+Se usan en modelos Python para agregar lógica especial.
+
+Se importan: from odoo import models, fields, api
+
+================================================================
+PARTE 1: @api.depends() - CAMPOS COMPUTADOS
+================================================================
+
+Declara dependencias de campos computados.
+Cuando los campos indicados cambian, se recalcula.
+
+Ejemplo:
+  @api.depends('quantity', 'unit_price')
+  def _compute_total(self):
+      for record in self:
+          record.total = record.quantity * record.unit_price
+
+Dependencias en Many2one (acceder campos relacionados):
+  @api.depends('product_id.price')
+  def _compute_amount(self):
+      for record in self:
+          record.amount = record.product_id.price
+
+Múltiples dependencias:
+  @api.depends('qty', 'price', 'discount')
+  def _compute_total(self):
+      ...
+
+================================================================
+PARTE 2: @api.constrains() - VALIDACIONES PYTHON
+================================================================
+
+Valida restricciones. Ejecuta en create() y write().
+Lanza ValidationError si la validación falla.
+Mensaje personalizado para el usuario.
+
+Requiere: from odoo.exceptions import ValidationError
+
+Ejemplo:
+  @api.constrains('age')
+  def _check_age(self):
+      for record in self:
+          if record.age < 18:
+              raise ValidationError(
+                  "La edad debe ser mayor a 18 años"
+              )
+
+Validar múltiples campos:
+  @api.constrains('start_date', 'end_date')
+  def _check_dates(self):
+      for record in self:
+          if record.start_date > record.end_date:
+              raise ValidationError(
+                  "Fecha inicial no puede ser mayor a final"
+              )
+
+================================================================
+PARTE 3: @api.ondelete() - VALIDACIÓN AL ELIMINAR
+================================================================
+
+Se ejecuta ANTES de eliminar un registro.
+Lanza UserError si no puede eliminarse.
+
+Requiere: from odoo.exceptions import UserError
+
+Ejemplo:
+  @api.ondelete(at_unlink=True)
+  def _protect_resolved_claims(self):
+      protected = self.filtered(lambda r: r.state == 'resolved')
+      if protected:
+          raise UserError(
+              "No se pueden eliminar reclamaciones resueltas"
+          )
+
+================================================================
+PARTE 4: @api.onchange() - EVENTOS EN FORMULARIOS
+================================================================
+
+Se ejecuta cuando usuario cambia un valor en formulario.
+NO guarda a la BD automáticamente.
+Útil para actualizar otros campos basado en el cambio.
+
+Ejemplo básico:
+  @api.onchange('consumer_type')
+  def _onchange_consumer_type(self):
+      if self.consumer_type != 'company':
+          self.company_name = False
+
+Observar múltiples campos:
+  @api.onchange('product_id', 'quantity')
+  def _onchange_product(self):
+      if self.product_id:
+          self.unit_price = self.product_id.price
+
+Mostrar advertencia al usuario:
+  @api.onchange('email')
+  def _onchange_email(self):
+      if '@' not in self.email:
+          return {
+              'warning': {
+                  'title': 'Email Inválido',
+                  'message': 'El email no tiene formato válido'
+              }
+          }
+
+Restricción dinámica de dominio:
+  @api.onchange('country_id')
+  def _onchange_country(self):
+      if self.country_id:
+          return {
+              'domain': {
+                  'state_id': [('country_id', '=', self.country_id.id)]
+              }
+          }
+
+================================================================
+PARTE 5: @api.model - MÉTODOS DEL MODELO
+================================================================
+
+Indica que el método actúa sobre el modelo completo.
+NO sobre registros específicos.
+Se usa en acciones sin necesidad de registro abierto.
+
+Ejemplo:
+  @api.model
+  def get_default_company(self):
+      return self.env.user.company_id
+
+  @api.model
+  def create_from_external_api(self, data):
+      return self.create(data)
+
+Uso en botones de acción desde XML:
+  <button name="action_generate_report"
+          string="Generar Reporte"
+          type="object"/>
+
+  @api.model
+  def action_generate_report(self):
+      # No necesita registro específico
+      return self.env['report'].create_report(...)
+
+================================================================
+PARTE 6: @api.model_create_multi - OPTIMIZACIÓN
+================================================================
+
+Optimiza la creación de múltiples registros de una vez.
+Más eficiente que crear uno por uno.
+
+Ejemplo:
+  @api.model_create_multi
+  def create(self, vals_list):
+      # vals_list es una lista de diccionarios
+      for vals in vals_list:
+          vals['state'] = 'new'
+      return super().create(vals_list)
+
+Forma correcta de sobreescribir create():
+  # Antes (ineficiente)
+  def create(self, vals):
+      vals['state'] = 'new'
+      return super().create(vals)
+
+  # Después (eficiente)
+  @api.model_create_multi
+  def create(self, vals_list):
+      for vals in vals_list:
+          vals['state'] = 'new'
+      return super().create(vals_list)
+
+================================================================
+PARTE 7: @api.returns() - TIPO DE RETORNO
+================================================================
+
+Define el tipo de retorno para métodos.
+Útil para métodos que devuelven registros.
+
+Ejemplo:
+  @api.returns('sale.order')
+  def copy(self, default=None):
+      return super().copy(default=default)
+
+================================================================
+PARTE 8: _inverse_* - CAMPO COMPUTADO INVERTIDO
+================================================================
+
+Permite editar un campo computado (read-only).
+Se ejecuta en write() cuando usuario edita el campo.
+
+Ejemplo:
+  class SaleOrderLine(models.Model):
+      _name = 'sale.order.line'
+      
+      quantity = fields.Float()
+      unit_price = fields.Float()
+      total_price = fields.Float(
+          compute='_compute_total',
+          inverse='_inverse_total'
+      )
+
+      @api.depends('quantity', 'unit_price')
+      def _compute_total(self):
+          for record in self:
+              record.total_price = record.quantity * record.unit_price
+
+      def _inverse_total(self):
+          # Si usuario edita total_price, actualizar quantity
+          for record in self:
+              if record.unit_price:
+                  record.quantity = record.total_price / record.unit_price
+
+================================================================
+PARTE 9: _search_* - BÚSQUEDA EN CAMPOS COMPUTADOS
+================================================================
+
+Permite filtrar por campo computado en vistas lista.
+Convierte la búsqueda en un dominio de BD.
+
+Ejemplo:
+  class Product(models.Model):
+      _name = 'product.product'
+      
+      cost = fields.Float()
+      sale_price = fields.Float()
+      profit_margin = fields.Float(
+          compute='_compute_profit',
+          search='_search_profit'
+      )
+
+      @api.depends('cost', 'sale_price')
+      def _compute_profit(self):
+          for record in self:
+              if record.cost:
+                  record.profit_margin = (
+                      (record.sale_price - record.cost) / record.cost
+                  ) * 100
+              else:
+                  record.profit_margin = 0
+
+      def _search_profit(self, operator, value):
+          # operator: '=', '!=', '>', '<', '>=', '<='
+          if operator == '>':
+              return [('sale_price', '>', value)]
+          elif operator == '<':
+              return [('cost', '<', value)]
+          return [('id', '=', False)]  # No encontrar nada
+
+================================================================
+PARTE 10: _default_* - VALOR POR DEFECTO DINÁMICO
+================================================================
+
+Define valor por defecto cuando crea nuevo registro.
+Se ejecuta automáticamente sin código adicional.
+
+Ejemplo:
+  class ClaimForm(models.Model):
+      _name = 'claim.form'
+      
+      claim_date = fields.Date(default='_default_claim_date')
+      assigned_user_id = fields.Many2one(
+          'res.users',
+          default='_default_assigned_user'
+      )
+      company_id = fields.Many2one(
+          'res.company',
+          default='_default_company'
+      )
+
+      def _default_claim_date(self):
+          return fields.Date.today()
+
+      def _default_assigned_user(self):
+          return self.env.user.id
+
+      def _default_company(self):
+          return self.env.user.company_id.id
+
+Uso en XML:
+  <!-- Automáticamente llama el método _default_* -->
+  <field name="claim_date"/>
+  <field name="assigned_user_id"/>
+  <field name="company_id"/>
+
+================================================================
+PARTE 11: _sql_constraints - RESTRICCIONES BD
+================================================================
+
+Define restricciones a nivel BD directamente.
+Más eficientes que @api.constrains() porque se validan
+en la BD sin pasar por Python.
+Garantizan integridad de datos a nivel sistema.
+
+Formato:
+  _sql_constraints = [
+      ('nombre_restriccion', 'restricción SQL', 'Mensaje error'),
+  ]
+
+Ejemplo completo:
+  class Product(models.Model):
+      _name = 'product.product'
+      
+      cost = fields.Float()
+      sale_price = fields.Float()
+      email = fields.Char()
+
+      _sql_constraints = [
+          (
+              'check_prices',
+              'CHECK (sale_price >= cost)',
+              'El precio de venta debe ser >= costo'
+          ),
+          (
+              'unique_email',
+              'UNIQUE(email)',
+              'El email ya existe en la BD'
+          ),
+          (
+              'check_positive_cost',
+              'CHECK (cost > 0)',
+              'El costo debe ser mayor a cero'
+          ),
+      ]
+
+Tipos de restricciones SQL:
+
+  CHECK (condición booleana):
+    'CHECK (age >= 18)' → Validar edad mínima
+    'CHECK (end_date > start_date)' → Validar rango fechas
+    'CHECK (quantity > 0)' → Cantidades positivas
+    'CHECK (email LIKE '%@%')' → Validar formato email
+
+  UNIQUE (uno o múltiples campos):
+    'UNIQUE(email)' → Email único
+    'UNIQUE(name, company_id)' → Combinación única
+    'UNIQUE(code)' → Código único
+
+  UNIQUE CON NULL (PostgreSQL - permite múltiples NULL):
+    'UNIQUE(email) WHERE email IS NOT NULL'
+    → Valida únicos pero permite NULLs múltiples
+
+Diferencias prácticas:
+  @api.constrains()    → Valida en Python, UX amigable
+  _sql_constraints     → Valida en BD, más rápido/seguro
+  Mejor práctica: Usar ambas en datos críticos
+
+================================================================
+PARTE 12: CONTEXTO Y ENTORNO (self.env)
+================================================================
+
+self.env - Acceso al entorno global:
+  self.env.user → Usuario actual (res.users)
+  self.env.user.id → ID usuario
+  self.env.user.name → Nombre usuario
+  self.env.user.email → Email usuario
+  self.env.company → Compañía actual
+  self.env.company.id → ID compañía
+  self.env.cr → Cursor de BD
+  self.env.context → Diccionario de contexto
+  self.env['model.name'] → Acceder otros modelos
+
+Ejemplo accediendo env:
+  def create(self, vals):
+      vals['user_id'] = self.env.user.id
+      vals['company_id'] = self.env.company.id
+      vals['created_by'] = self.env.user.name
+      return super().create(vals)
+
+Pasar contexto desde XML:
+  <button name="action_export"
+          context="{'export_format': 'pdf'}"
+          type="object"/>
+
+  def action_export(self):
+      fmt = self._context.get('export_format', 'pdf')
+      return self._export_to_file(fmt)
+
+Pre-rellenar campos en Many2one:
+  <field name="order_line_ids"
+         context="{'default_order_id': active_id,
+                   'default_warehouse': warehouse_id}"/>
+
+Pasar contexto a submétodos:
+  def action_create_related(self):
+      new_context = self.env.context.copy()
+      new_context['skip_validation'] = True
+      
+      return self.with_context(new_context).create({
+          'name': 'Test Record',
+      })
+
+================================================================
+PARTE 13: TRANSACCIONES Y ATOMICIDAD
+================================================================
+
+with self.env.cr.savepoint()
+- Crea punto de guardado en transacción
+- Si hay error dentro, revierte solo ese bloque
+- Otros registros continúan procesándose
+
+Ejemplo:
+  from odoo.exceptions import UserError
+
+  def process_bulk_update(self):
+      for record in self:
+          try:
+              with self.env.cr.savepoint():
+                  record.write({'state': 'processing'})
+                  record._validate_custom_logic()
+                  record.write({'state': 'completed'})
+          except UserError as e:
+              # Este registro falla, otros continúan
+              record.write({
+                  'state': 'error',
+                  'error_message': str(e)
+              })
+
+Transacción atomic() completa:
+  @api.model
+  def atomic_operation(self):
+      self.env.cr.commit()
+      
+      try:
+          record1 = self.create({'name': 'Test1'})
+          record2 = self.create({'name': 'Test2'})
+          record1.write({'related_id': record2.id})
+          self.env.cr.commit()
+      except Exception:
+          self.env.cr.rollback()
+          raise
+
+================================================================
+PARTE 14: HERENCIA DE MODELOS
+================================================================
+
+_inherit - Extender modelo base
+- Herencia simple, comparte misma tabla
+- Extiende funcionalidad sin modificar original
+
+Ejemplo:
+  # Modelo original (en módulo sale)
+  class SaleOrder(models.Model):
+      _name = 'sale.order'
+      name = fields.Char()
+
+  # Extender (en módulo custom)
+  class SaleOrderExtended(models.Model):
+      _name = 'sale.order'
+      _inherit = 'sale.order'
+      
+      custom_field = fields.Char()
+      
+      def write(self, vals):
+          result = super().write(vals)
+          if 'state' in vals:
+              self._custom_action()
+          return result
+
+_inherits - Herencia de delegación
+- Crea Many2one con modelo padre
+- Hereda campos pero en tabla separada
+
+Ejemplo:
+  class Partner(models.Model):
+      _name = 'res.partner'
+      name = fields.Char()
+
+  class Customer(models.Model):
+      _name = 'res.customer'
+      _inherits = {'res.partner': 'partner_id'}
+      
+      partner_id = fields.Many2one(
+          'res.partner',
+          required=True
+      )
+      customer_code = fields.Char()
+
+Acceso a campos:
+  customer.name → accede a partner_id.name automáticamente
+
+================================================================
+PARTE 15: TRACKING Y AUDITORÍA
+================================================================
+
+tracking=True - Registrar cambios automáticamente
+- Monitorea cambios en campos
+- Aparece en timeline/Chatter
+- Accesible vía mail.tracking.value
+
+Ejemplo:
+  class ClaimForm(models.Model):
+      _name = 'claim.form'
+      
+      name = fields.Char(tracking=True)
+      state = fields.Selection(
+          [('new', 'Nuevo'), ('done', 'Resuelto')],
+          tracking=True
+      )
+      internal_notes = fields.Text(tracking=False)
+
+Ver cambios en código:
+  changes = self.env['mail.tracking.value'].search([
+      ('res_id', '=', record.id),
+      ('res_model', '=', 'claim.form')
+  ])
+
+Invalidar caché:
+  def custom_action(self):
+      self.write({'name': 'New Value'})
+      self.invalidate_cache()
+      
+      # O campos específicos
+      self.invalidate_cache(['computed_field'])
+
+================================================================
+PARTE 16: EJEMPLO COMPLETO INTEGRADOR
+================================================================
+
+Ejemplo de modelo con varios decoradores:
+
+  from odoo import models, fields, api
+  from odoo.exceptions import ValidationError, UserError
+
+  class ClaimForm(models.Model):
+      _name = 'claim.form'
+      _description = 'Formulario de Reclamación'
+
+      name = fields.Char(
+          required=True,
+          tracking=True
+      )
+      claim_date = fields.Date(
+          default='_default_claim_date',
+          tracking=True
+      )
+      consumer_type = fields.Selection(
+          [('person', 'Persona'), ('company', 'Empresa')],
+          default='person'
+      )
+      amount = fields.Float()
+      state = fields.Selection(
+          [('new', 'Nuevo'), ('done', 'Resuelto')],
+          default='new',
+          tracking=True
+      )
+      total_days = fields.Integer(
+          compute='_compute_total_days'
+      )
+
+      _sql_constraints = [
+          ('check_amount',
+           'CHECK (amount > 0)',
+           'El monto debe ser positivo'),
+      ]
+
+      def _default_claim_date(self):
+          return fields.Date.today()
+
+      @api.depends('claim_date')
+      def _compute_total_days(self):
+          for record in self:
+              if record.claim_date:
+                  delta = fields.Date.today() - record.claim_date
+                  record.total_days = delta.days
+              else:
+                  record.total_days = 0
+
+      @api.constrains('amount')
+      def _check_amount_range(self):
+          for record in self:
+              if record.amount > 10000:
+                  raise ValidationError(
+                      "El monto no puede ser mayor a 10000"
+                  )
+
+      @api.onchange('consumer_type')
+      def _onchange_consumer_type(self):
+          if self.consumer_type != 'company':
+              self.company_name = False
+
+      @api.ondelete(at_unlink=True)
+      def _protect_resolved_claims(self):
+          if self.state == 'done':
+              raise UserError(
+                  "No se puede eliminar una reclamación resuelta"
+              )
+
+      def action_resolve(self):
+          self.state = 'done'
+
+================================================================
+DECORADORES DEPRECADOS (NO USAR)
+================================================================
+
+@api.multi (Odoo 13+) - DEPRECADO
+  Indicaba que trabajaba con múltiples registros
+  Ahora todos los métodos son multi por defecto
+
+@api.one (Odoo 13+) - DEPRECADO
+  Indicaba que trabajaba con un solo registro
+  Ahora se usa bucle for en todos
+
+Código viejo (NO USAR):
+  @api.multi
+  @api.one
+  def get_total(self):
+      return self.amount + self.tax
+
+Código correcto:
+  def get_total(self):
+      for record in self:
+          return record.amount + record.tax
+
+================================================================
+REFERENCES Y RESOURCES
+================================================================
+
+Documentación oficial Odoo:
+  https://www.odoo.com/documentation
+
+Excepciones comunes:
+  from odoo.exceptions import ValidationError
+  from odoo.exceptions import UserError
+  from odoo.exceptions import AccessError
+
+Imports necesarios:
+  from odoo import models, fields, api
+  from odoo import SUPERUSER_ID
+  from datetime import datetime, timedelta
+  from odoo.tools import DEFAULT_SERVER_DATETIME_FORMAT
+
+Convenciones de nombres:
+  _compute_* → Métodos para campos computados
+  _inverse_* → Métodos inversos
+  _search_* → Métodos de búsqueda
+  _default_* → Métodos de valor por defecto
+  _check_* → Métodos de validación
+  _on* → Métodos de eventos
+  action_* → Acciones desde botones
+
+================================================================
