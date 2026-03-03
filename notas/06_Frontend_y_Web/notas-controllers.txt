@@ -1,0 +1,247 @@
+========================================
+  GUIA: CONTROLADORES HTTP
+========================================
+  SECCION : 06_Frontend_y_Web
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-controllers.txt
+========================================
+
+----------------------------------------
+DESCRIPCION TECNICA
+----------------------------------------
+Los controladores HTTP en Odoo son clases Python que definen rutas
+web accesibles via URL. Permiten crear endpoints REST, servir paginas
+HTML para el portal, manejar formularios web, y construir APIs
+personalizadas que se comunican con los modelos de Odoo.
+Usan el decorador @http.route() para mapear URLs a metodos Python.
+
+----------------------------------------
+1. ESTRUCTURA BASICA DE UN CONTROLADOR
+----------------------------------------
+Proposito: Crear una ruta web que responda a una URL.
+
+ARCHIVO: mi_modulo/controllers/main.py
+
+    from odoo import http
+    from odoo.http import request
+
+    class MiControlador(http.Controller):
+
+        @http.route('/mi-ruta', auth='public', methods=['GET'], website=True)
+        def mi_pagina(self, **kwargs):
+            datos = request.env['res.partner'].sudo().search([], limit=5)
+            return request.render('mi_modulo.mi_template', {
+                'socios': datos,
+            })
+
+ARCHIVO: mi_modulo/controllers/__init__.py
+    from . import main
+
+ARCHIVO: mi_modulo/__init__.py
+    from . import controllers
+    from . import models
+
+----------------------------------------
+2. PARAMETROS DEL DECORADOR @http.route()
+----------------------------------------
+
+auth='public'
+  Cualquier visitante puede acceder, sin autenticacion.
+  Usar para paginas publicas del sitio web.
+
+auth='user'
+  Solo usuarios autenticados (con sesion iniciada).
+  Usar para el portal del cliente y paginas privadas.
+
+auth='none'
+  Sin ninguna verificacion de autenticacion.
+  Usar solo para webhooks o endpoints muy especificos.
+
+methods=['GET']         Solo acepta peticiones GET.
+methods=['POST']        Solo acepta peticiones POST.
+methods=['GET', 'POST'] Acepta ambos.
+
+website=True
+  Activa el contexto de sitio web (multi-website, tema, etc.).
+  Necesario para rutas del portal o sitio web de Odoo.
+
+csrf=False
+  Desactiva la proteccion CSRF.
+  Necesario para webhooks externos que hacen POST.
+  ADVERTENCIA: Solo desactivar cuando sea absolutamente necesario.
+
+type='json'
+  La ruta acepta y responde en JSON en lugar de HTML.
+  Usar para endpoints de API o llamadas AJAX desde OWL.
+
+cors='*'
+  Permite peticiones desde cualquier origen (CORS).
+  Usar para APIs publicas consumidas desde otros dominios.
+
+----------------------------------------
+3. EL OBJETO 'request'
+----------------------------------------
+Proposito: Acceder a datos de la peticion HTTP y del entorno Odoo.
+
+request.env
+  El entorno ORM de Odoo para el usuario actual.
+  Ejemplo: request.env['sale.order'].search([])
+
+request.env.user
+  El usuario que realiza la peticion.
+
+request.params
+  Parametros de la URL (?clave=valor) o del formulario POST.
+  Ejemplo: request.params.get('nombre', '')
+
+request.httprequest
+  La peticion HTTP cruda (werkzeug).
+  Ejemplo: request.httprequest.method  --> 'GET' o 'POST'
+
+request.render(template, values)
+  Renderiza una plantilla QWeb y devuelve HTML.
+
+request.redirect(url)
+  Redirige al navegador a otra URL.
+
+request.make_response(data, headers)
+  Crea una respuesta HTTP personalizada (para descargas, JSON, etc.)
+
+----------------------------------------
+4. ENDPOINT REST / API JSON
+----------------------------------------
+Proposito: Crear una API que devuelve datos en formato JSON.
+
+    import json
+    from odoo import http
+    from odoo.http import request
+
+    class MiAPI(http.Controller):
+
+        @http.route('/api/productos', auth='user',
+                    type='json', methods=['POST'])
+        def get_productos(self, categoria_id=None, **kwargs):
+            dominio = []
+            if categoria_id:
+                dominio = [('categ_id', '=', categoria_id)]
+
+            productos = request.env['product.product'].search_read(
+                dominio,
+                ['name', 'list_price', 'qty_available'],
+                limit=50
+            )
+            return {'productos': productos, 'total': len(productos)}
+
+LLAMADA DESDE OWL (usando orm service es preferible, pero si
+necesitas un endpoint custom):
+    const result = await fetch('/api/productos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', method: 'call',
+                               params: { categoria_id: 5 } }),
+    });
+
+NOTA: Para type='json', Odoo espera el formato JSON-RPC 2.0.
+
+----------------------------------------
+5. MANEJAR FORMULARIOS WEB (POST)
+----------------------------------------
+Proposito: Recibir datos de un formulario HTML del portal.
+
+    @http.route('/mi-portal/contacto', auth='public',
+                methods=['POST'], website=True, csrf=True)
+    def procesar_contacto(self, nombre='', email='', mensaje='', **kwargs):
+        if not nombre or not email:
+            return request.render('mi_modulo.template_contacto', {
+                'error': 'Nombre y email son obligatorios',
+            })
+
+        request.env['mail.message'].sudo().create({
+            'subject': f'Contacto web de {nombre}',
+            'body': mensaje,
+            'email_from': email,
+        })
+        return request.redirect('/contacto/gracias')
+
+----------------------------------------
+6. DESCARGAR ARCHIVOS
+----------------------------------------
+Proposito: Servir un archivo para descarga desde una ruta.
+
+    @http.route('/descargar/reporte/<int:record_id>',
+                auth='user', methods=['GET'])
+    def descargar_reporte(self, record_id, **kwargs):
+        registro = request.env['mi.modelo'].browse(record_id)
+
+        contenido = registro.generar_csv()  # Tu logica aqui
+        headers = [
+            ('Content-Type', 'text/csv'),
+            ('Content-Disposition', f'attachment; filename=reporte_{record_id}.csv'),
+        ]
+        return request.make_response(contenido, headers=headers)
+
+----------------------------------------
+ERRORES COMUNES
+----------------------------------------
+[X] Error 403 Forbidden al acceder a la ruta
+    Causa:    La ruta tiene auth='user' pero el visitante no esta autenticado,
+              o el usuario no tiene permisos sobre el modelo accedido.
+    Solucion: Cambiar a auth='public' si es pagina publica, o usar
+              .sudo() para acceder al modelo sin restricciones de usuario.
+
+[X] Error CSRF token invalid
+    Causa:    Formulario POST sin token CSRF o peticion externa.
+    Solucion: Para formularios internos, incluir el token:
+              <input type="hidden" name="csrf_token"
+                     t-att-value="request.csrf_token()"/>
+              Para webhooks externos: csrf=False en el decorador.
+
+[X] La ruta no es encontrada (404)
+    Causa:    El controlador no fue importado correctamente en __init__.py.
+    Solucion: Verificar cadena de imports:
+              mi_modulo/__init__.py --> from . import controllers
+              mi_modulo/controllers/__init__.py --> from . import main
+
+[X] request.env no tiene acceso a los datos esperados
+    Causa:    El usuario autenticado no tiene permisos sobre el modelo.
+    Solucion: Usar request.env['modelo'].sudo() para operaciones
+              que deben ejecutarse sin restriccion de usuario.
+              ADVERTENCIA: Usar sudo() con cuidado, solo cuando necesario.
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. AUTH CORRECTO: Nunca uses auth='none' para rutas que acceden
+   a datos de negocio. Usa 'public' o 'user' segun corresponda.
+
+2. SUDO CON CUIDADO: .sudo() elimina todas las restricciones de
+   seguridad. Usarlo solo para operaciones especificas y auditadas.
+
+3. CSRF: Nunca desactives CSRF en rutas de formularios internos.
+   Solo desactivar en webhooks externos bien documentados.
+
+4. TYPE JSON: Para APIs, usa type='json'. Odoo maneja
+   automaticamente la serializacion y el formato JSON-RPC.
+
+5. IMPORTS: La cadena de imports en __init__.py es critica.
+   Si falta un nivel, la ruta simplemente no existira.
+
+----------------------------------------
+CUANDO USAR CONTROLADORES
+----------------------------------------
+  Pagina del portal para el cliente?   --> auth='user', website=True
+  Pagina publica del sitio web?        --> auth='public', website=True
+  API para una app movil?              --> type='json', auth='user'
+  Webhook de Stripe/PayPal?            --> csrf=False, auth='none'
+  Descarga de archivo generado?        --> make_response() con headers
+  Formulario de contacto publico?      --> auth='public', methods=POST
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-qweb.txt          --> Plantillas HTML que los controladores renderizan
+  notas-owl-framework.txt --> Componentes OWL que consumen estos endpoints
+  notas-api-external.txt  --> API externa XML-RPC vs REST personalizado
+  notas-security.txt      --> Como asegurar rutas con grupos de acceso
+
+========================================

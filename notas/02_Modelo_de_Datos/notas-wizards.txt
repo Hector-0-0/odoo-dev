@@ -1,92 +1,232 @@
 ========================================
-      GUÍA MAESTRA: WIZARDS (ASISTENTES)
+  GUIA: WIZARDS (TRANSIENTMODEL)
+========================================
+  SECCION : 02_Modelo_de_Datos
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-wizards.txt
 ========================================
 
 ----------------------------------------
-DESCRIPCIÓN TÉCNICA
+DESCRIPCION TECNICA
 ----------------------------------------
-Los Wizards son modelos que heredan de 'models.TransientModel'. 
-Se utilizan para crear ventanas emergentes (diálogos) donde el 
-usuario introduce datos temporales para realizar una acción 
-específica (ej: un reporte de ventas entre fechas).
+Un Wizard en Odoo es un asistente temporal construido sobre un
+TransientModel. Sus registros se almacenan en la BD pero se limpian
+automaticamente (por defecto cada 24h via cron). Se usan para guiar
+al usuario en una accion compleja que requiere datos adicionales antes
+de ejecutarse, como confirmar una operacion, importar datos o enviar emails.
 
 ----------------------------------------
-CARACTERÍSTICAS DE TRANSIENTMODEL
+1. DEFINICION DEL MODELO
 ----------------------------------------
-- Persistencia temporal: Los datos se guardan en la DB, pero Odoo
-  los elimina automáticamente cada hora (Vacuum).
-- Sin seguridad compleja: No suelen requerir reglas de registro 
-  (ir.rule), pero sí acceso en el CSV de seguridad.
-- Ligeros: Diseñados para no sobrecargar la base de datos.
+Proposito: Crear el modelo temporal con los campos del formulario.
+
+EJEMPLO:
+    from odoo import models, fields, api
+    from odoo.exceptions import UserError
+
+    class WizardConfirmarPedido(models.TransientModel):
+        _name        = 'wizard.confirmar.pedido'
+        _description = 'Asistente para Confirmar Pedido'
+
+        # Referencia al pedido desde el que se abrio el wizard
+        pedido_id = fields.Many2one(
+            'sale.order',
+            string='Pedido',
+            required=True
+        )
+
+        # Campos de entrada del usuario
+        fecha_entrega = fields.Date('Fecha de Entrega', required=True)
+        nota          = fields.Text('Nota para el cliente')
+        enviar_email  = fields.Boolean('Enviar confirmacion por email', default=True)
+
+        # Accion principal del wizard
+        def action_confirmar(self):
+            self.ensure_one()
+            if not self.fecha_entrega:
+                raise UserError('Debe indicar una fecha de entrega.')
+
+            self.pedido_id.write({
+                'state': 'sale',
+                'commitment_date': self.fecha_entrega,
+                'note': self.nota,
+            })
+
+            if self.enviar_email:
+                self.pedido_id.action_quotation_send()
+
+            return {'type': 'ir.actions.act_window_close'}
 
 ----------------------------------------
-ESTRUCTURA DE IMPLEMENTACIÓN
+2. VISTA DEL WIZARD (XML)
 ----------------------------------------
-1. MODELO (Python):
-   class SaleBatchUpdate(models.TransientModel):
-       _name = 'sale.batch.update'
-       _description = 'Actualización Masiva de Ventas'
+Proposito: Definir el formulario del dialogo emergente (popup).
 
-       new_date = fields.Date('Nueva Fecha', required=True)
-       order_ids = fields.Many2many('sale.order')
-
-       def action_apply(self):
-           self.order_ids.write({'date_order': self.new_date})
-
-2. VISTA (XML):
-   <record id="view_wizard_form" model="ir.ui.view">
-       <field name="model">sale.batch.update</field>
-       <field name="arch" type="xml">
-           <form>
-               <group>
-                   <field name="new_date"/>
-               </group>
-               <footer>
-                   <button name="action_apply" string="Aplicar" 
-                           type="object" class="btn-primary"/>
-                   <button string="Cancelar" class="btn-secondary" 
-                           special="cancel"/>
-               </footer>
-           </form>
-       </field>
-   </record>
+    <record id="view_wizard_confirmar_pedido_form" model="ir.ui.view">
+        <field name="name">wizard.confirmar.pedido.form</field>
+        <field name="model">wizard.confirmar.pedido</field>
+        <field name="arch" type="xml">
+            <form string="Confirmar Pedido">
+                <group>
+                    <field name="pedido_id" readonly="1"/>
+                    <field name="fecha_entrega"/>
+                    <field name="enviar_email"/>
+                </group>
+                <group string="Notas">
+                    <field name="nota" nolabel="1"/>
+                </group>
+                <footer>
+                    <button name="action_confirmar"
+                            string="Confirmar Pedido"
+                            type="object"
+                            class="btn-primary"/>
+                    <button string="Cancelar"
+                            class="btn-secondary"
+                            special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
 
 ----------------------------------------
-CÓMO LANZAR UN WIZARD
+3. ACTION PARA ABRIR EL WIZARD
 ----------------------------------------
-Desde un botón en el modelo principal:
+Proposito: Definir como se abre el wizard (desde un boton o menu).
 
-def open_wizard(self):
+DESDE PYTHON (boton en un formulario):
+    # En el modelo sale.order (heredado):
+    def action_abrir_wizard_confirmar(self):
+        self.ensure_one()
+        wizard = self.env['wizard.confirmar.pedido'].create({
+            'pedido_id': self.id,
+        })
+        return {
+            'type'     : 'ir.actions.act_window',
+            'name'     : 'Confirmar Pedido',
+            'res_model': 'wizard.confirmar.pedido',
+            'res_id'   : wizard.id,
+            'view_mode': 'form',
+            'target'   : 'new',       --> 'new' = dialogo popup
+        }
+
+DESDE XML (action + boton en vista heredada):
+    <record id="action_wizard_confirmar" model="ir.actions.act_window">
+        <field name="name">Confirmar Pedido</field>
+        <field name="res_model">wizard.confirmar.pedido</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <!-- Boton en la vista del pedido heredada -->
+    <button name="%(action_wizard_confirmar)d"
+            string="Confirmar"
+            type="action"
+            class="btn-primary"/>
+
+----------------------------------------
+4. PASAR CONTEXTO AL WIZARD
+----------------------------------------
+Proposito: Precargar datos en el wizard desde el registro activo.
+
+DESDE EL ACTION:
+    def action_abrir_wizard(self):
+        return {
+            'type'     : 'ir.actions.act_window',
+            'res_model': 'wizard.confirmar.pedido',
+            'view_mode': 'form',
+            'target'   : 'new',
+            'context'  : {
+                'default_pedido_id': self.id,
+                'default_fecha_entrega': fields.Date.today(),
+            }
+        }
+
+    # En el wizard, los campos con 'default_X' se precargan
+    # automaticamente si el campo se llama 'X'.
+
+----------------------------------------
+5. RETORNO DE ACCIONES DESDE EL WIZARD
+----------------------------------------
+
+Cerrar el popup:
+    return {'type': 'ir.actions.act_window_close'}
+
+Redirigir a un registro especifico:
     return {
-        'name': 'Actualizar Ventas',
-        'type': 'ir.actions.act_window',
-        'res_model': 'sale.batch.update',
-        'view_mode': 'form',
-        'target': 'new',              --> Abre la ventana como POP-UP
-        'context': {'default_order_ids': self.ids}
+        'type'      : 'ir.actions.act_window',
+        'res_model' : 'sale.order',
+        'res_id'    : self.pedido_id.id,
+        'view_mode' : 'form',
+        'target'    : 'current',
+    }
+
+Mostrar notificacion (Odoo 16+/18):
+    return {
+        'type'  : 'ir.actions.client',
+        'tag'   : 'display_notification',
+        'params': {
+            'title'  : 'Exito',
+            'message': 'El pedido fue confirmado correctamente.',
+            'type'   : 'success',   # success | warning | danger | info
+            'sticky' : False,
+        }
     }
 
 ----------------------------------------
-REGLAS DE ORO DEL EXPERTO
+ERRORES COMUNES
 ----------------------------------------
-1. TARGET='NEW': Es el atributo que define que la vista sea un 
-   cuadro de diálogo emergente. Sin esto, se verá como una página normal.
+[X] El wizard se abre pero los campos estan vacios
+    Causa:    No se paso el contexto con 'default_campo' o no se creo
+              el registro del wizard con los valores iniciales.
+    Solucion: Usar context={'default_pedido_id': self.id} o crear el
+              wizard con .create({'pedido_id': self.id}) antes de retornar.
 
-2. FOOTER: Los botones del Wizard siempre deben ir dentro del tag 
-   <footer> para que aparezcan en la parte inferior derecha del pop-up.
+[X] "Expected singleton" al ejecutar la accion del wizard
+    Causa:    self tiene mas de un registro. El wizard espera uno solo.
+    Solucion: Agregar self.ensure_one() al inicio del metodo action_.
 
-3. SPECIAL='CANCEL': Usa este atributo en el botón de cerrar para 
-   que Odoo cierre la ventana automáticamente sin ejecutar código.
+[X] El popup no se cierra tras la accion
+    Causa:    El metodo no retorna la accion de cierre.
+    Solucion: Retornar {'type': 'ir.actions.act_window_close'}.
 
-4. LIMPIEZA: No uses TransientModels para guardar datos maestros.
-   Si necesitas que la información persista, usa models.Model.
+[X] Los datos del wizard persisten y se acumulan en la BD
+    Causa:    El cron de limpieza de TransientModel esta desactivado.
+    Solucion: Verificar que el cron 'Limpiar Modelos Transitorios' este
+              activo en Ajustes > Tecnico > Automatizacion > Acciones Planificadas.
 
 ----------------------------------------
-CASOS DE USO COMUNES
+REGLAS DE ORO
 ----------------------------------------
-- Generación de reportes PDF con filtros de fecha.
-- Cambio de estado masivo de registros seleccionados.
-- Pasarelas de confirmación (¿Está seguro de que desea...?).
-- Interfaces de configuración rápida (Setup Wizards).
+1. ENSURE_ONE: Siempre llama self.ensure_one() en los metodos
+   de accion del wizard. Un wizard siempre opera sobre un registro.
+
+2. TARGET NEW: Para wizards/dialogos, usa 'target': 'new' en el
+   action. Abre el formulario en un popup, no en la pagina completa.
+
+3. FOOTER CON BOTON CANCEL: Siempre incluye un boton con
+   special="cancel" en el footer. Es la X del dialogo para el usuario.
+
+4. CONTEXTO PARA PRECARGAR: Usa 'default_campo': valor en el context
+   del action para precargar campos sin necesidad de crear el wizard
+   manualmente en Python.
+
+5. NOMBRE: Por convencion, los wizards se nombran 'wizard.accion.modelo'
+   Ejemplo: 'wizard.confirmar.pedido', 'wizard.importar.productos'
+
+----------------------------------------
+CUANDO USAR UN WIZARD
+----------------------------------------
+  Accion que necesita datos adicionales del usuario?   --> Wizard
+  Confirmacion de una operacion destructiva?           --> Wizard
+  Proceso de importacion/exportacion con opciones?     --> Wizard
+  Envio de email con campos editables antes de enviar? --> Wizard
+  Operacion simple sin inputs del usuario?             --> Metodo directo con boton type="object"
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-models.txt    --> TransientModel como tipo de modelo
+  notas-actions.txt   --> Tipos de acciones para abrir wizards
+  notas-views.txt     --> Vistas de formulario para wizards
 
 ========================================

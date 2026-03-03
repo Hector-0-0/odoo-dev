@@ -1,0 +1,243 @@
+========================================
+  GUIA: DEBUGGING - DEPURACION
+========================================
+  SECCION : 08_Calidad_y_Despliegue
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-debugging.txt
+========================================
+
+----------------------------------------
+DESCRIPCION TECNICA
+----------------------------------------
+El debugging en Odoo combina herramientas del framework Python
+(logging, pdb) con herramientas propias de Odoo (modo debug,
+shell interactivo, vistas tecnicas). Saber depurar eficientemente
+es critica para reducir el tiempo de desarrollo y resolucion de bugs.
+
+----------------------------------------
+1. MODO DEBUG DE ODOO
+----------------------------------------
+Proposito: Activar herramientas avanzadas en la interfaz de Odoo.
+
+ACTIVAR POR URL:
+  Agregar ?debug=1 a cualquier URL de Odoo:
+  http://localhost:8069/web?debug=1
+
+  O desde el menu:
+  Configuracion --> Activar modo desarrollador
+
+NIVELES DE DEBUG:
+  ?debug=1        --> Modo debug normal (info tecnica en UI)
+  ?debug=assets   --> Reconstruye y sirve los bundles JS/CSS sin cache
+  ?debug=0        --> Desactiva el modo debug
+
+QUE HABILITA EL MODO DEBUG:
+  - Menu "Tecnico" en Configuracion con acceso a modelos, vistas, acciones.
+  - Informacion del modelo y campo al pasar el mouse sobre elementos.
+  - Boton "Ver metadatos" en los registros.
+  - Acceso a editar vistas directamente desde la UI.
+  - Logs mas detallados en el servidor.
+
+----------------------------------------
+2. LOGGING EN PYTHON
+----------------------------------------
+Proposito: Registrar informacion en el log del servidor de Odoo.
+
+CONFIGURACION BASICA (en cada archivo .py):
+    import logging
+    _logger = logging.getLogger(__name__)
+
+NIVELES DE LOG (de menor a mayor severidad):
+    _logger.debug("Mensaje solo visible en nivel DEBUG")
+    _logger.info("Informacion general del flujo")
+    _logger.warning("Algo inesperado pero no critico")
+    _logger.error("Error que debe investigarse")
+    _logger.exception("Error con traceback completo (usar en except)")
+
+EJEMPLO REAL:
+    def procesar_pago(self, monto):
+        _logger.info(
+            "Procesando pago de %.2f para partner %s (ID: %d)",
+            monto, self.partner_id.name, self.partner_id.id
+        )
+        try:
+            resultado = self._llamar_pasarela(monto)
+            _logger.info("Pago procesado exitosamente. Ref: %s", resultado.ref)
+            return resultado
+        except Exception as e:
+            _logger.exception(
+                "Error al procesar pago de %.2f para %s", monto, self.partner_id.name
+            )
+            raise
+
+VER LOS LOGS:
+  En terminal donde corre Odoo: se muestran en tiempo real.
+  En produccion: /var/log/odoo/odoo-server.log
+
+CAMBIAR NIVEL DE LOG EN TIEMPO REAL (sin reiniciar):
+  Configuracion --> Tecnico --> Logging --> Cambiar niveles
+
+----------------------------------------
+3. PDB - DEBUGGER INTERACTIVO DE PYTHON
+----------------------------------------
+Proposito: Pausar la ejecucion e inspeccionar variables en tiempo real.
+
+USAR PDB EN ODOO:
+    def mi_metodo_con_bug(self):
+        datos = self._calcular_algo()
+        import pdb; pdb.set_trace()    # <-- Pausa aqui
+        resultado = self._procesar(datos)
+        return resultado
+
+COMANDOS PDB ESENCIALES:
+  n  (next)     --> Ejecutar la siguiente linea
+  s  (step)     --> Entrar dentro de la funcion llamada
+  c  (continue) --> Continuar hasta el proximo breakpoint
+  q  (quit)     --> Salir del debugger
+  p variable    --> Imprimir el valor de una variable
+  pp variable   --> Imprimir con formato bonito (pretty print)
+  l  (list)     --> Mostrar el codigo alrededor de la linea actual
+  w  (where)    --> Mostrar el stack trace actual
+  h  (help)     --> Ayuda
+
+EJEMPLO DE SESION PDB:
+  > mi_modulo/models/mi_modelo.py(45)mi_metodo()
+  -> resultado = self._procesar(datos)
+  (Pdb) p datos
+  {'campo1': 'valor', 'campo2': 42}
+  (Pdb) p self.name
+  'Registro de prueba'
+  (Pdb) n
+  > mi_modulo/models/mi_modelo.py(46)mi_metodo()
+  (Pdb) c
+
+ADVERTENCIA: Nunca dejar pdb.set_trace() en codigo de produccion.
+Pausara el servidor para TODOS los usuarios.
+
+----------------------------------------
+4. ODOO SHELL - CONSOLA INTERACTIVA
+----------------------------------------
+Proposito: Ejecutar codigo Python con acceso al ORM de Odoo
+sin necesidad de crear un modulo.
+
+INICIAR EL SHELL:
+    python odoo-bin shell -d mi_base_de_datos
+
+COMANDOS UTILES EN EL SHELL:
+    # El entorno esta disponible como 'env'
+    >>> env['res.partner'].search([('name', 'like', 'Test')], limit=5)
+
+    # Ver campos de un modelo
+    >>> env['sale.order'].fields_get(['name', 'state', 'amount_total'])
+
+    # Inspeccionar un registro especifico
+    >>> orden = env['sale.order'].browse(42)
+    >>> orden.name
+    'S00042'
+    >>> orden.state
+    'draft'
+
+    # Probar un metodo
+    >>> orden.action_confirm()
+
+    # Ejecutar una query SQL directamente
+    >>> env.cr.execute("SELECT id, name FROM res_partner LIMIT 5")
+    >>> env.cr.fetchall()
+
+    # Comprometer cambios (por defecto el shell hace rollback al salir)
+    >>> env.cr.commit()
+
+----------------------------------------
+5. VER QUERIES SQL GENERADAS POR EL ORM
+----------------------------------------
+Proposito: Diagnosticar problemas de performance o queries inesperadas.
+
+ACTIVAR LOG DE QUERIES SQL:
+  En odoo.conf o al iniciar el servidor:
+    log_level = debug_sql
+
+  O en tiempo real desde Configuracion --> Tecnico --> Logging:
+    Modulo: odoo.sql_db, Nivel: DEBUG
+
+ALTERNATIVA EN CODIGO (para un bloque especifico):
+    import logging
+    logging.getLogger('odoo.sql_db').setLevel(logging.DEBUG)
+
+    # Tu codigo aqui
+
+    logging.getLogger('odoo.sql_db').setLevel(logging.WARNING)
+
+----------------------------------------
+6. HERRAMIENTAS DE LA UI EN MODO DEBUG
+----------------------------------------
+
+Ver definicion de una vista:
+  Abrir cualquier vista --> Menu "Depurar" (icono bug) --> "Editar vista"
+
+Ver metadatos de un registro:
+  Abrir cualquier formulario --> Menu "Depurar" --> "Ver metadatos"
+  Muestra: ID, XML ID, create_date, write_date, usuario creador.
+
+Ver acciones y menus:
+  Configuracion --> Tecnico --> Interfaz de usuario --> Acciones de ventana
+  Util para diagnosticar por que un menu no aparece o una accion falla.
+
+----------------------------------------
+ERRORES COMUNES Y SU DIAGNOSTICO
+----------------------------------------
+[X] "Field X does not exist on model Y"
+    Diagnostico: El campo no existe o el modulo que lo define no esta instalado.
+    Solucion: Verificar _inherit, nombre del campo y modulo instalado.
+
+[X] "ir.model.access" - Acceso denegado
+    Diagnostico: El usuario no tiene permisos sobre ese modelo.
+    Solucion: Revisar ir.model.access.csv del modulo.
+
+[X] Vista no muestra cambios despues de actualizar
+    Diagnostico: Cache de vistas o de assets en el navegador.
+    Solucion: ?debug=assets en la URL + hard refresh (Ctrl+Shift+R).
+
+[X] "Record does not exist or has been deleted"
+    Diagnostico: Se intenta acceder a un registro con ID que no existe en DB.
+    Solucion: Verificar que el ID sea correcto con una busqueda previa.
+
+[X] Metodo Python no se ejecuta cuando deberia
+    Diagnostico: El modulo no fue actualizado despues del ultimo cambio.
+    Solucion: python odoo-bin -u mi_modulo -d mi_db y reiniciar servidor.
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. LOGGING PRIMERO: Antes de usar pdb, intenta resolver el bug
+   con _logger.info(). Es mas rapido y no bloquea el servidor.
+
+2. NIVEL CORRECTO: Usa debug para informacion de desarrollo,
+   info para eventos normales, error para problemas reales.
+
+3. PDB SOLO EN LOCAL: Nunca uses pdb en produccion. Un set_trace()
+   olvidado bloqueara el servidor para todos los usuarios.
+
+4. SHELL PARA EXPLORAR: El shell de Odoo es tu mejor herramienta
+   para explorar modelos, probar metodos y entender el ORM.
+
+5. ACTUALIZAR MODULO: Ante cualquier comportamiento extrano,
+   lo primero es: -u mi_modulo para forzar recarga de todo.
+
+----------------------------------------
+CUANDO USAR CADA HERRAMIENTA
+----------------------------------------
+  Ver que hace el codigo?               --> _logger.info() en puntos clave
+  Pausar y explorar variables?          --> import pdb; pdb.set_trace()
+  Probar queries o metodos ORM?         --> odoo-bin shell
+  Ver queries SQL generadas?            --> log_level = debug_sql
+  Ver definicion de vista o accion?     --> Modo debug en la UI
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-testing.txt    --> Pruebas automatizadas para prevenir bugs
+  notas-deployment.txt --> Como configurar logs en produccion
+  notas-orm.txt        --> ORM que se depura con estas herramientas
+  notas-performance.txt --> Diagnosticar queries lentas con debug_sql
+
+========================================

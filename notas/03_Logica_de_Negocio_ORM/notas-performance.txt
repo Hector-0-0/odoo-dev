@@ -1,85 +1,212 @@
 ========================================
-    GUÍA MAESTRA: OPTIMIZACIÓN Y PERF
+  GUIA: RENDIMIENTO Y OPTIMIZACION ORM
+========================================
+  SECCION : 03_Logica_de_Negocio_ORM
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-performance.txt
 ========================================
 
 ----------------------------------------
-DESCRIPCIÓN TÉCNICA
+DESCRIPCION TECNICA
 ----------------------------------------
-La optimización en Odoo se basa en reducir el número de consultas 
-SQL (Queries) y el uso de memoria. El ORM de Odoo 17/18 incluye 
-mecanismos de prefetch y caché que deben aprovecharse correctamente.
-
-----------------------------------------
-1. EL PROBLEMA DE LAS CONSULTAS N+1
-----------------------------------------
-Ocurre cuando iteras un recordset y accedes a un campo relacional, 
-disparando una consulta SQL por cada registro.
-
-MAL (N consultas):
-for record in self:
-    print(record.partner_id.name)  --> Una query por cada vuelta
-
-BIEN (1 consulta):
-partners = self.mapped('partner_id') --> Odoo precarga todos los IDs
-for record in self:
-    print(record.partner_id.name)  --> Lee de la caché del prefetch
+El mayor problema de rendimiento en modulos Odoo personalizados es el
+patron N+1: ejecutar una consulta SQL por cada registro en un loop.
+El ORM de Odoo tiene mecanismos de prefetch automatico para evitarlo,
+pero el desarrollador puede romperlo sin saberlo. Esta guia explica
+como detectar, evitar y corregir problemas de rendimiento.
 
 ----------------------------------------
-2. MAPPED, FILTERED Y SORTED (IN-MEMORY)
+1. EL PROBLEMA N+1 - QUE ES Y COMO DETECTARLO
 ----------------------------------------
-Usa estos métodos para manipular datos ya cargados en memoria en 
-lugar de hacer nuevos `search()` a la base de datos.
+Proposito: Entender el anti-patron mas comun en desarrollo Odoo.
 
-- mapped(): Extrae valores o recordsets relacionados.
-- filtered(): Filtra registros usando lógica Python (sin tocar SQL).
-- sorted(): Ordena el recordset actual.
+EL PROBLEMA:
+    # MAL: Una consulta SQL por cada pedido en el loop
+    pedidos = self.env['sale.order'].search([('state', '=', 'sale')])
+    for pedido in pedidos:
+        print(pedido.partner_id.name)   # SQL: SELECT * FROM res_partner WHERE id = X
+        # Si hay 1000 pedidos --> 1000 consultas SQL adicionales
 
-----------------------------------------
-3. BATCH PROCESSING (PROCESAMIENTO POR LOTES)
-----------------------------------------
-Si debes procesar un millón de registros, no lo hagas en una sola 
-transacción. Divide la carga para evitar bloqueos de tablas SQL.
+EL ORM DE ODOO LO RESUELVE CON PREFETCH:
+    # El ORM detecta que se accede a partner_id en un loop y carga
+    # TODOS los partner_id del recordset en una sola consulta SQL.
+    # Esto funciona AUTOMATICAMENTE si el recordset se obtuvo junto.
 
-SINTAXIS:
-records = self.search([], limit=1000)
-while records:
-    # Procesar lote
-    records.write({'state': 'processed'})
-    self.env.cr.commit()  --> Libera memoria y asegura datos
-    records = self.search([('state', '!=', 'processed')], limit=1000)
+CUANDO SE ROMPE EL PREFETCH:
+    for pedido_id in lista_de_ids:                        # Lista de IDs, no recordset
+        pedido = self.env['sale.order'].browse(pedido_id) # browse individual rompe prefetch
+        print(pedido.partner_id.name)                     # N+1 de nuevo
 
-----------------------------------------
-4. PREFETCH Y CONTEXTO
-----------------------------------------
-Odoo carga automáticamente campos de registros del mismo recordset.
-Si extraes un ID de un recordset, rompes el prefetch.
-
-- Mantén los recordsets unidos siempre que sea posible.
-- Usa `with_context(prefetch_fields=False)` si vas a leer miles de 
-  registros y solo necesitas un campo específico (ahorra RAM).
+SOLUCION:
+    pedidos = self.env['sale.order'].browse(lista_de_ids) # browse de todos juntos
+    for pedido in pedidos:
+        print(pedido.partner_id.name)                     # El ORM hace prefetch
 
 ----------------------------------------
-REGLAS DE ORO DEL EXPERTO
+2. PREFETCH MANUAL CON prefetch_ids
 ----------------------------------------
-1. SEARCH_COUNT: Si solo quieres saber si existen registros o 
-   cuántos hay, usa `search_count()`. Es 10x más rápido que `len(search())`.
+Proposito: Forzar al ORM a hacer prefetch cuando no lo hace automaticamente.
 
-2. READ_GROUP: Para estadísticas o sumatorias masivas, usa 
-   `read_group()`. Esto hace un "GROUP BY" en SQL en lugar de 
-   traer miles de registros a Python para sumarlos.
-
-3. EVITAR BUCLES EN COMPUTED FIELDS: Asegúrate de que tus campos 
-   computados sean rápidos. Si un campo computado hace un search(), 
-   la vista de lista (tree view) será extremadamente lenta.
-
-4. SQL CRUDO PARA REPORTES: Si el ORM tarda más de 2-3 segundos en 
-   reunir datos para un reporte, considera usar `self.env.cr.execute()`.
+EJEMPLO:
+    ids_a_procesar = [1, 5, 23, 47, 102]
+    registros = self.env['mi.modelo'].browse(ids_a_procesar)
+    # El ORM ya sabe que va a necesitar todos estos registros
+    for r in registros:
+        _ = r.campo_relacionado.name   # Se carga todo de una sola vez
 
 ----------------------------------------
-HERRAMIENTAS DE DIAGNÓSTICO
+3. read() Y read_group() - ALTERNATIVAS EFICIENTES
 ----------------------------------------
-- --log-level=debug_sql: Muestra todas las queries en la terminal.
-- Odoo Profiler: Usa `with profile(description='test'):` para 
-  analizar qué línea de código consume más tiempo.
+
+read() --> Lee campos especificos directamente. Evita cargar el ORM completo.
+           Retorna lista de dicts. Ideal para reportes y exportaciones.
+
+EJEMPLO:
+    # En lugar de:
+    pedidos = self.env['sale.order'].search([])
+    datos = [(p.name, p.amount_total) for p in pedidos]  # Carga todo el modelo
+
+    # Mejor:
+    datos = self.env['sale.order'].search_read(
+        domain=[('state', '=', 'sale')],
+        fields=['name', 'amount_total', 'partner_id'],
+        limit=500
+    )
+    # Retorna: [{'id': 1, 'name': 'S001', 'amount_total': 150.0, ...}, ...]
+
+read_group() --> Equivalente a un GROUP BY en SQL. Ideal para totales y conteos.
+
+EJEMPLO:
+    # Total de ventas por cliente
+    resultado = self.env['sale.order'].read_group(
+        domain=[('state', '=', 'sale')],
+        fields=['partner_id', 'amount_total:sum'],
+        groupby=['partner_id']
+    )
+    # Retorna: [{'partner_id': (1, 'Cliente A'), 'amount_total': 5000.0, ...}]
+
+----------------------------------------
+4. OPERACIONES MASIVAS - WRITE EFICIENTE
+----------------------------------------
+
+MAL (N writes individuales):
+    for record in registros:
+        record.write({'estado': 'procesado'})   # Una UPDATE por registro
+
+BIEN (1 write masivo):
+    registros.write({'estado': 'procesado'})    # Una sola UPDATE para todos
+
+MAL (crear en loop):
+    for item in lista:
+        self.env['mi.modelo'].create({'campo': item})   # N INSERTs
+
+BIEN (crear masivo):
+    vals_list = [{'campo': item} for item in lista]
+    self.env['mi.modelo'].create(vals_list)             # 1 INSERT masivo
+
+----------------------------------------
+5. DESHABILITAR TRACKING PARA MASIVOS
+----------------------------------------
+Proposito: El tracking del chatter genera una notificacion por cada
+           campo cambiado en cada registro. En operaciones masivas,
+           esto puede generar miles de INSERT en mail.message.
+
+SOLUCION:
+    registros.with_context(
+        tracking_disable=True,    # Deshabilita todo el tracking de mail.thread
+        mail_notrack=True,        # Deshabilita tracking de campos especificos
+        mail_create_nolog=True,   # No crea el mensaje "Creado por X"
+    ).write({'estado': 'procesado'})
+
+----------------------------------------
+6. CAMPOS COMPUTE: store=True VS SIN STORE
+----------------------------------------
+
+SIN STORE (calculo en tiempo real):
+  Ventaja:  Siempre actualizado, no ocupa espacio en BD.
+  Desventaja: Se recalcula en cada lectura. Con muchos registros, es lento.
+              No se puede filtrar ni ordenar por este campo en la BD.
+
+CON STORE=TRUE:
+  Ventaja:  Se guarda en BD. Se puede filtrar, ordenar e indexar.
+            Solo se recalcula cuando cambian los campos en @api.depends.
+  Desventaja: Ocupa espacio. Puede quedar desactualizado si los depends
+              no estan bien definidos.
+
+REGLA: Usa store=True si el campo se muestra en vistas lista o se
+       usa en busquedas/filtros sobre modelos con muchos registros.
+
+----------------------------------------
+7. INDICES SQL EN CAMPOS DE BUSQUEDA
+----------------------------------------
+
+AGREGAR INDICE:
+    referencia = fields.Char(index=True)     --> Crea INDEX en la columna
+
+CUANDO INDEXAR:
+  OK  Campos usados frecuentemente en dominios de search().
+  OK  Campos Many2one (Odoo los indexa automaticamente).
+  OK  Campos de estado (state) usados en filtros frecuentes.
+  MAL Campos booleanos o de baja cardinalidad (pocos valores distintos).
+  MAL Campos que cambian muy frecuentemente (degrada las escrituras).
+
+----------------------------------------
+8. LIMITAR RESULTADOS CON limit Y offset
+----------------------------------------
+
+# Paginacion eficiente:
+pagina = self.env['mi.modelo'].search(
+    [('activo', '=', True)],
+    limit=100,
+    offset=200,    # Pagina 3 de 100 registros
+    order='id asc'
+)
+
+# NUNCA cargues todos los registros si solo necesitas los primeros:
+    MAL: todos = self.env['mi.modelo'].search([])
+         primeros_10 = todos[:10]    # Carga TODOS en memoria primero
+
+    BIEN: primeros_10 = self.env['mi.modelo'].search([], limit=10)
+
+----------------------------------------
+ERRORES COMUNES
+----------------------------------------
+[X] El cron tarda horas en ejecutarse
+    Causa:    Loop con browse individual o write individual por registro.
+    Solucion: Usar browse masivo, write masivo y deshabilitar tracking.
+
+[X] La vista lista es muy lenta al cargar
+    Causa:    Hay campos compute sin store=True que se recalculan para
+              cada registro al cargar la lista.
+    Solucion: Agregar store=True a los campos compute mostrados en listas.
+
+[X] search() devuelve todos los registros aunque se pide 'limit'
+    Causa:    El domain es demasiado amplio o el 'limit' no se paso.
+    Solucion: Verificar el domain y pasar limit explicitamente.
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. NUNCA BROWSE EN LOOP: Nunca hagas browse(id) dentro de un for.
+   Haz browse con todos los IDs juntos antes del loop.
+
+2. WRITE MASIVO: Un solo write() en todo el recordset es siempre
+   mejor que N writes individuales en un loop.
+
+3. TRACKING DISABLE EN CRONS: Todo cron o importacion masiva debe
+   usar with_context(tracking_disable=True).
+
+4. SEARCH_READ PARA REPORTES: Si solo necesitas leer datos (no
+   modificarlos), usa search_read() en lugar de search() + acceso a campos.
+
+5. STORE EN CAMPOS DE LISTA: Campos compute que aparecen en vistas
+   lista sobre modelos con muchos registros siempre deben tener store=True.
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-orm.txt     --> Metodos ORM base
+  notas-sql.txt     --> SQL crudo para casos extremos de rendimiento
+  notas-cron.txt    --> Crons donde el rendimiento es critico
 
 ========================================

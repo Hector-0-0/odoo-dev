@@ -1,0 +1,289 @@
+========================================
+  GUIA: OWL FRAMEWORK
+========================================
+  SECCION : 06_Frontend_y_Web
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-owl-framework.txt
+========================================
+
+----------------------------------------
+DESCRIPCION TECNICA
+----------------------------------------
+OWL (Odoo Web Library) es el framework JavaScript reactivo de Odoo
+desde la version 14, y es el estandar obligatorio en Odoo 17/18.
+Reemplaza completamente al antiguo sistema de Widgets de Backbone.
+Esta basado en componentes, hooks y un sistema de estado reactivo,
+muy similar conceptualmente a React o Vue.
+
+----------------------------------------
+1. ANATOMIA DE UN COMPONENTE OWL
+----------------------------------------
+Proposito: Crear un componente visual reutilizable en el backend.
+
+ESTRUCTURA DE ARCHIVOS:
+  mi_modulo/
+    static/
+      src/
+        components/
+          MiContador/
+            MiContador.js
+            MiContador.xml
+            MiContador.scss   (opcional)
+
+ARCHIVO JS (MiContador.js):
+    /** @odoo-module **/
+    import { Component, useState } from "@odoo/owl";
+
+    export class MiContador extends Component {
+        static template = "mi_modulo.MiContador";  // Referencia al XML
+
+        setup() {
+            // Aqui van los hooks (equivalente a constructor reactivo)
+            this.state = useState({ count: 0 });
+        }
+
+        incrementar() {
+            this.state.count++;
+        }
+
+        decrementar() {
+            this.state.count--;
+        }
+    }
+
+ARCHIVO XML (MiContador.xml):
+    <?xml version="1.0" encoding="UTF-8"?>
+    <templates xml:space="preserve">
+        <t t-name="mi_modulo.MiContador">
+            <div class="mi-contador">
+                <button t-on-click="decrementar">-</button>
+                <span t-esc="state.count"/>
+                <button t-on-click="incrementar">+</button>
+            </div>
+        </t>
+    </templates>
+
+REGISTRO EN MANIFEST:
+    'assets': {
+        'web.assets_backend': [
+            'mi_modulo/static/src/components/MiContador/MiContador.js',
+            'mi_modulo/static/src/components/MiContador/MiContador.xml',
+        ],
+    },
+
+----------------------------------------
+2. HOOKS PRINCIPALES DE OWL
+----------------------------------------
+Proposito: Manejo del ciclo de vida y estado reactivo del componente.
+
+useState(obj)
+  El hook mas usado. Convierte un objeto en reactivo.
+  Cualquier cambio en sus propiedades re-renderiza el componente.
+
+    this.state = useState({ cargando: false, datos: [] });
+    this.state.cargando = true;  // Automaticamente re-renderiza
+
+useRef(name)
+  Obtiene una referencia directa a un elemento del DOM.
+
+    this.inputRef = useRef("miInput");
+    // En el XML: <input t-ref="miInput"/>
+    // En JS: this.inputRef.el.focus();
+
+onMounted(fn)
+  Se ejecuta cuando el componente se inserta en el DOM.
+  Equivalente a componentDidMount de React.
+
+    onMounted(() => {
+        console.log("Componente montado");
+        this.cargarDatos();
+    });
+
+onWillUnmount(fn)
+  Se ejecuta justo antes de que el componente sea destruido.
+  Usar para limpiar intervalos, listeners, etc.
+
+    onWillUnmount(() => {
+        clearInterval(this.intervalo);
+    });
+
+onWillUpdateProps(nextProps)
+  Se ejecuta cuando las props del componente van a cambiar.
+
+    onWillUpdateProps((nextProps) => {
+        if (nextProps.id !== this.props.id) {
+            this.recargar(nextProps.id);
+        }
+    });
+
+----------------------------------------
+3. PROPS - COMUNICACION PADRE A HIJO
+----------------------------------------
+Proposito: Pasar datos de un componente padre a uno hijo.
+
+DEFINICION EN EL HIJO (MiBoton.js):
+    export class MiBoton extends Component {
+        static template = "mi_modulo.MiBoton";
+        static props = {
+            etiqueta: String,           // Obligatorio
+            onClick: Function,          // Obligatorio
+            color: { type: String, optional: true },  // Opcional
+        };
+    }
+
+USO EN EL PADRE (XML):
+    <MiBoton etiqueta="'Guardar'" onClick.bind="guardar" color="'primary'"/>
+
+NOTA: Las props son de solo lectura en el hijo. Para comunicar
+del hijo al padre, usar callbacks (funciones pasadas como prop).
+
+----------------------------------------
+4. SERVICIOS DE ODOO EN OWL
+----------------------------------------
+Proposito: Acceder a funcionalidades de Odoo desde un componente.
+
+IMPORTAR Y USAR SERVICIOS:
+    /** @odoo-module **/
+    import { Component } from "@odoo/owl";
+    import { useService } from "@web/core/utils/hooks";
+
+    export class MiComponente extends Component {
+        static template = "mi_modulo.MiComponente";
+
+        setup() {
+            // Servicio ORM: para hacer consultas a la base de datos
+            this.orm = useService("orm");
+
+            // Servicio de notificaciones
+            this.notification = useService("notification");
+
+            // Servicio de dialogos/modales
+            this.dialog = useService("dialog");
+
+            // Servicio de acciones (abrir vistas, ejecutar actions)
+            this.action = useService("action");
+        }
+
+        async cargarClientes() {
+            const clientes = await this.orm.searchRead(
+                "res.partner",
+                [["is_company", "=", true]],
+                ["name", "email"],
+                { limit: 10 }
+            );
+            this.state.clientes = clientes;
+        }
+
+        mostrarExito() {
+            this.notification.add("Guardado correctamente", {
+                type: "success",  // success | warning | danger | info
+            });
+        }
+    }
+
+----------------------------------------
+5. EXTENDER UN COMPONENTE EXISTENTE DE ODOO
+----------------------------------------
+Proposito: Agregar funcionalidad a un componente nativo de Odoo
+sin modificar el codigo fuente original.
+
+EJEMPLO: Agregar un boton al FormRenderer:
+    /** @odoo-module **/
+    import { FormRenderer } from "@web/views/form/form_renderer";
+    import { patch } from "@web/core/utils/patch";
+
+    patch(FormRenderer.prototype, {
+        setup() {
+            super.setup();
+            // Tu logica adicional aqui
+        },
+    });
+
+NOTA: El metodo 'patch' es el equivalente OWL de _inherit en Python.
+Usar con cuidado: puede romper compatibilidad con otros modulos.
+
+----------------------------------------
+6. REGISTRAR UN WIDGET PERSONALIZADO
+----------------------------------------
+Proposito: Crear un widget para usar en vistas XML de Odoo.
+
+    /** @odoo-module **/
+    import { registry } from "@web/core/registry";
+    import { Component } from "@odoo/owl";
+
+    class MiWidget extends Component {
+        static template = "mi_modulo.MiWidget";
+        // this.props.value    --> valor actual del campo
+        // this.props.readonly --> si esta en modo lectura
+    }
+
+    // Registrar en el registry de campos
+    registry.category("fields").add("mi_widget", {
+        component: MiWidget,
+    });
+
+USO EN VISTA XML:
+    <field name="mi_campo" widget="mi_widget"/>
+
+----------------------------------------
+ERRORES COMUNES
+----------------------------------------
+[X] "Cannot find module @odoo/owl"
+    Causa:    Falta el comentario /** @odoo-module **/ al inicio del archivo.
+    Solucion: Agregar /** @odoo-module **/ como primera linea del JS.
+
+[X] El componente no se renderiza / aparece vacio
+    Causa:    El nombre del template en JS no coincide con t-name en XML.
+    Solucion: Verificar que static template = "modulo.NombreExacto"
+              coincida con t-name="modulo.NombreExacto" en el XML.
+
+[X] Cambios en JS/XML no se reflejan en el navegador
+    Causa:    Cache del navegador o del bundle de assets.
+    Solucion: Hard refresh (Ctrl+Shift+R) o activar modo debug
+              y limpiar assets: ?debug=assets en la URL.
+
+[X] "props validation error"
+    Causa:    Se paso una prop con tipo incorrecto o falta una obligatoria.
+    Solucion: Revisar static props y los valores que se pasan en el XML.
+
+[X] useState no re-renderiza
+    Causa:    Se reemplazo el objeto completo en lugar de mutar sus props.
+    Solucion: En lugar de this.state = { nuevo: true }
+              usar this.state.nuevo = true
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. MODULO HEADER: Todo archivo JS de OWL DEBE comenzar con
+   /** @odoo-module **/ para que Odoo lo procese correctamente.
+
+2. TEMPLATE NAME: El nombre del template DEBE seguir el patron
+   'nombre_modulo.NombreComponente' para evitar colisiones.
+
+3. ESTADO REACTIVO: Usa SIEMPRE useState para datos que cambian.
+   No uses variables normales de JS para estado visual.
+
+4. SERVICIOS: Nunca hagas fetch() directo a la API. Usa siempre
+   useService("orm") para consultas a la base de datos.
+
+5. PATCH CON CUIDADO: El metodo patch() modifica prototipos
+   globales. Documentar siempre por que y que se esta parchando.
+
+----------------------------------------
+CUANDO USAR OWL
+----------------------------------------
+  Widget interactivo en un formulario?     --> Componente OWL + registry
+  Modificar comportamiento de vista?       --> patch() sobre componente
+  Dashboard con graficas en tiempo real?   --> Componente OWL + orm service
+  Reporte PDF o pagina estatica?           --> QWeb (ver notas-qweb.txt)
+  Boton con logica compleja en vista?      --> Componente OWL registrado
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-qweb.txt     --> Plantillas XML para reportes (distinto a OWL)
+  notas-assets.txt   --> Como registrar los archivos OWL en el manifest
+  notas-widgets.txt  --> Widgets de backend (algunos usan OWL internamente)
+  notas-controllers.txt --> Rutas HTTP que sirven datos a componentes OWL
+
+========================================

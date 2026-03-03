@@ -1,0 +1,203 @@
+========================================
+  GUIA: CRON JOBS - TAREAS PROGRAMADAS
+========================================
+  SECCION : 07_Automatizacion_y_Servicios
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-cron.txt
+========================================
+
+----------------------------------------
+DESCRIPCION TECNICA
+----------------------------------------
+Los cron jobs en Odoo son tareas automaticas que se ejecutan
+periodicamente en segundo plano, sin intervencion del usuario.
+Se definen como registros del modelo ir.cron en archivos XML
+de datos, y llaman a metodos de modelos Python en intervalos
+configurables (cada hora, cada dia, cada semana, etc.).
+
+----------------------------------------
+1. DEFINIR UN CRON JOB EN XML
+----------------------------------------
+Proposito: Crear una tarea programada que se instale con el modulo.
+
+    <record id="cron_limpiar_logs" model="ir.cron">
+        <field name="name">Mi Modulo: Limpiar logs antiguos</field>
+        <field name="model_id" ref="model_mi_modulo_log"/>
+        <field name="state">code</field>
+        <field name="code">
+            model.limpiar_logs_antiguos()
+        </field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="numbercall">-1</field>
+        <field name="active">True</field>
+        <field name="user_id" ref="base.user_root"/>
+    </record>
+
+CAMPOS IMPORTANTES:
+  name           --> Nombre descriptivo visible en el menu de crons.
+  model_id       --> Referencia al modelo que contiene el metodo.
+                     Formato: ref="model_nombre_del_modelo"
+                     (guiones bajos, sin el prefijo 'x_')
+  state          --> Siempre 'code' para ejecutar codigo Python.
+  code           --> El codigo a ejecutar. 'model' es el recordset.
+  interval_number --> Numero de intervalos entre ejecuciones.
+  interval_type  --> minutes | hours | days | weeks | months
+  numbercall     --> Veces que se ejecuta. -1 = infinito.
+  active         --> True para activar al instalar el modulo.
+  user_id        --> Usuario bajo el cual corre el cron.
+                     base.user_root = administrador del sistema.
+
+----------------------------------------
+2. EL METODO PYTHON DEL CRON
+----------------------------------------
+Proposito: Implementar la logica que ejecutara el cron.
+
+    from odoo import models, api
+    import logging
+
+    _logger = logging.getLogger(__name__)
+
+    class MiModeloLog(models.Model):
+        _name = 'mi.modulo.log'
+
+        @api.model
+        def limpiar_logs_antiguos(self):
+            """
+            Elimina logs con mas de 30 dias de antiguedad.
+            Llamado por el cron 'cron_limpiar_logs'.
+            """
+            from datetime import datetime, timedelta
+
+            fecha_limite = datetime.now() - timedelta(days=30)
+            logs_antiguos = self.search([
+                ('create_date', '<', fecha_limite)
+            ])
+
+            count = len(logs_antiguos)
+            logs_antiguos.unlink()
+
+            _logger.info(
+                "Cron limpiar_logs: %d registros eliminados.", count
+            )
+
+BUENAS PRACTICAS EN EL METODO:
+  [OK] Usar @api.model (no necesita un registro especifico).
+  [OK] Siempre loggear inicio, fin y cantidad de registros procesados.
+  [OK] Procesar en lotes para evitar timeouts en tablas grandes.
+  [OK] Manejar excepciones para que un error no detenga el cron.
+
+----------------------------------------
+3. PROCESAR EN LOTES (BATCH PROCESSING)
+----------------------------------------
+Proposito: Evitar timeouts al procesar grandes volumenes de datos.
+
+    @api.model
+    def procesar_ordenes_pendientes(self):
+        BATCH_SIZE = 100
+        ordenes = self.env['sale.order'].search([
+            ('state', '=', 'draft'),
+            ('date_order', '<', fields.Datetime.now()),
+        ], limit=BATCH_SIZE)
+
+        _logger.info("Procesando %d ordenes pendientes.", len(ordenes))
+
+        for orden in ordenes:
+            try:
+                orden.action_confirmar_automatico()
+            except Exception as e:
+                _logger.error(
+                    "Error procesando orden %s: %s", orden.name, str(e)
+                )
+                continue  # Continua con la siguiente orden
+
+        # Si habia mas registros que el batch, se procesaran en la
+        # siguiente ejecucion del cron automaticamente.
+
+----------------------------------------
+4. EJECUTAR UN CRON MANUALMENTE (DESARROLLO)
+----------------------------------------
+Proposito: Probar el cron sin esperar al intervalo programado.
+
+DESDE EL MENU DE ODOO:
+  Configuracion --> Tecnico --> Automatizacion --> Acciones programadas
+  Buscar el cron --> Boton "Ejecutar manualmente"
+
+DESDE LA CONSOLA PYTHON (modo shell de Odoo):
+  python odoo-bin shell -d mi_db
+  >>> env['ir.cron'].browse(ID_DEL_CRON).method_direct_trigger()
+
+DESDE CODIGO (para tests):
+  self.env.ref('mi_modulo.cron_limpiar_logs').method_direct_trigger()
+
+----------------------------------------
+5. CRON CON CONTEXTO ESPECIFICO
+----------------------------------------
+Proposito: Ejecutar el cron en un idioma o timezone especifico.
+
+    <field name="code">
+        model.with_context(lang='es_PE', tz='America/Lima').enviar_reportes()
+    </field>
+
+----------------------------------------
+ERRORES COMUNES
+----------------------------------------
+[X] El cron no se ejecuta
+    Causa:    El servidor de Odoo no tiene el scheduler activo.
+    Solucion: Verificar que odoo-bin corra sin --test-enable y que
+              en odoo.conf no este desactivado: workers >= 1
+
+[X] "model_id: record not found" al instalar el modulo
+    Causa:    La referencia model_mi_modulo_nombre tiene typo o el
+              modelo no esta creado aun.
+    Solucion: Verificar nombre exacto del modelo con guiones bajos:
+              mi.modulo.log --> model_mi_modulo_log
+
+[X] El cron falla silenciosamente
+    Causa:    Una excepcion no manejada en el metodo Python.
+    Solucion: Agregar try/except con _logger.error() en el metodo.
+              Revisar logs del servidor: /var/log/odoo/odoo.log
+
+[X] El cron se ejecuta pero no hace nada
+    Causa:    El dominio de busqueda no retorna registros.
+    Solucion: Probar el dominio de busqueda manualmente en modo shell
+              antes de darlo por correcto.
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. LOGGING: Todo cron DEBE tener _logger.info() al inicio y al
+   final con la cantidad de registros procesados. Sin esto, es
+   imposible auditar si funciono.
+
+2. BATCH: Si el cron procesa tablas con mas de 1000 registros,
+   SIEMPRE usar limit= y procesar en lotes para evitar timeout.
+
+3. TRY/EXCEPT: Envolver la logica de cada registro en try/except
+   para que un error en uno no detenga el procesamiento del resto.
+
+4. USER_ID: Usa base.user_root para crons de sistema.
+   Para crons que deben respetar reglas de acceso, usa un usuario
+   tecnico especifico de tu modulo.
+
+5. NOMBRE DESCRIPTIVO: El nombre del cron debe incluir el modulo
+   y una descripcion clara: "Mi Modulo: Limpiar logs antiguos".
+
+----------------------------------------
+CUANDO USAR CRON JOBS
+----------------------------------------
+  Enviar emails de recordatorio diario?         --> Cron diario
+  Sincronizar datos con API externa?            --> Cron horario
+  Generar reportes mensuales?                   --> Cron mensual
+  Limpiar datos temporales?                     --> Cron semanal
+  Confirmar automaticamente documentos?         --> Cron con batch
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-webhooks.txt    --> Alternativa: reaccionar a eventos externos
+  notas-api-external.txt --> Consumir APIs externas desde el cron
+  notas-orm.txt         --> Metodos de busqueda y modificacion de datos
+  notas-decorators.txt  --> Uso correcto de @api.model en el metodo
+
+========================================

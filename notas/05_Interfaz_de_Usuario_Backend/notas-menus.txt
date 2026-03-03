@@ -1,0 +1,217 @@
+========================================
+  GUIA: MENUS EN ODOO
+========================================
+  SECCION : 05_Interfaz_de_Usuario_Backend
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-menus.txt
+========================================
+
+----------------------------------------
+DESCRIPCION TECNICA
+----------------------------------------
+Los menus en Odoo definen la navegacion del backend. Se organizan
+en una jerarquia de hasta 3 niveles: menu raiz (barra superior),
+menu de categoria y menu de item (accion final). Se definen en XML
+y cada item puede estar protegido por grupos de seguridad.
+
+----------------------------------------
+1. JERARQUIA DE MENUS EN ODOO
+----------------------------------------
+
+NIVEL 1 - MENU RAIZ (barra de navegacion superior):
+  Son las aplicaciones principales: Ventas, Contabilidad, Hospital, etc.
+  Solo deben tener icono, nunca action directa.
+
+NIVEL 2 - MENU DE CATEGORIA:
+  Son los grupos dentro de una aplicacion: Pedidos, Reportes, Configuracion.
+  Pueden o no tener action.
+
+NIVEL 3 - MENU ITEM (hoja):
+  Son los items que el usuario hace clic y abren una vista.
+  Siempre deben tener action.
+
+ESTRUCTURA VISUAL:
+  [Hospital]                        --> Nivel 1 (raiz)
+    [Pacientes]                     --> Nivel 2
+      [Todos los Pacientes]         --> Nivel 3 (abre la vista lista)
+      [Nuevo Ingreso]               --> Nivel 3 (abre formulario nuevo)
+    [Reportes]                      --> Nivel 2
+      [Estadisticas]                --> Nivel 3
+    [Configuracion]                 --> Nivel 2
+      [Tipos de Sangre]             --> Nivel 3
+
+----------------------------------------
+2. DEFINICION DE MENUS EN XML
+----------------------------------------
+Archivo recomendado: views/menus.xml
+Debe ser el ULTIMO archivo en la lista 'data' del manifest.
+
+EJEMPLO COMPLETO:
+    <!-- NIVEL 1: MENU RAIZ (la aplicacion) -->
+    <menuitem
+        id="menu_hospital_root"
+        name="Hospital"
+        web_icon="hospital_gestion,static/description/icon.png"
+        sequence="10"
+        groups="mi_modulo.group_hospital_user"
+    />
+
+    <!-- NIVEL 2: CATEGORIA -->
+    <menuitem
+        id="menu_hospital_pacientes"
+        name="Pacientes"
+        parent="menu_hospital_root"
+        sequence="10"
+    />
+
+    <!-- NIVEL 3: ITEMS (hojas con action) -->
+    <menuitem
+        id="menu_hospital_pacientes_all"
+        name="Todos los Pacientes"
+        parent="menu_hospital_pacientes"
+        action="action_hospital_patient"
+        sequence="10"
+    />
+
+    <menuitem
+        id="menu_hospital_pacientes_nuevo"
+        name="Nuevo Ingreso"
+        parent="menu_hospital_pacientes"
+        action="action_hospital_patient_new"
+        sequence="20"
+    />
+
+    <!-- NIVEL 2: CONFIGURACION (siempre al final, con grupos) -->
+    <menuitem
+        id="menu_hospital_config"
+        name="Configuracion"
+        parent="menu_hospital_root"
+        sequence="100"
+        groups="mi_modulo.group_hospital_manager"
+    />
+
+    <menuitem
+        id="menu_hospital_config_tipos"
+        name="Tipos de Sangre"
+        parent="menu_hospital_config"
+        action="action_hospital_tipo_sangre"
+        sequence="10"
+    />
+
+ATRIBUTOS DE MENUITEM:
+  id        --> XML ID unico del menu.
+  name      --> Texto visible en el menu.
+  parent    --> XML ID del menu padre (nivel superior).
+  action    --> XML ID del action que se ejecuta al hacer clic.
+  sequence  --> Orden numerico (menor = aparece primero).
+  groups    --> Grupos que pueden ver este menu.
+  web_icon  --> Icono para menus raiz (formato: 'modulo,ruta/icono.png').
+
+----------------------------------------
+3. SEPARAR MENUS DE VISTAS (BUENA PRACTICA)
+----------------------------------------
+Proposito: Mantener los menus en un archivo independiente facilita
+           el mantenimiento y la herencia de menus.
+
+ESTRUCTURA RECOMENDADA DE ARCHIVOS:
+  views/
+  |-- hospital_patient_views.xml    --> Solo vistas y actions del modelo
+  |-- hospital_appointment_views.xml
+  |-- menus.xml                     --> Solo menuitem, siempre al final
+
+EN EL MANIFEST:
+    'data': [
+        'security/ir.model.access.csv',
+        'views/hospital_patient_views.xml',
+        'views/hospital_appointment_views.xml',
+        'views/menus.xml',            --> Ultimo siempre
+    ],
+
+RAZON: Los menus referencian actions. Si el archivo de menus se carga
+antes que el archivo de actions, Odoo dara error de "action not found".
+
+----------------------------------------
+4. HEREDAR Y MODIFICAR MENUS EXISTENTES
+----------------------------------------
+Proposito: Agregar items a menus de modulos de Odoo sin modificar
+           el modulo original.
+
+AGREGAR SUBMENU A UN MENU EXISTENTE DE ODOO:
+    <!-- Agregar "Hospital" dentro del menu de RRHH de Odoo -->
+    <menuitem
+        id="menu_hrh_hospital_link"
+        name="Pacientes Hospital"
+        parent="hr.menu_hr_root"          --> Parent del modulo 'hr'
+        action="action_hospital_patient"
+        sequence="50"
+    />
+
+CAMBIAR EL NOMBRE DE UN MENU EXISTENTE (herencia):
+    <record id="hr.menu_hr_root" model="ir.ui.menu">
+        <field name="name">Recursos Humanos y Hospital</field>
+    </record>
+
+----------------------------------------
+5. ACCIONES ASOCIADAS A MENUS
+----------------------------------------
+Proposito: Buenas practicas para vincular actions con menus.
+
+FORMATO DE REFERENCIA:
+  En el atributo 'action' del menuitem, se referencia el XML ID
+  del action sin el formato "%(...)d". Solo el ID:
+
+    <menuitem action="action_hospital_patient" .../>     --> CORRECTO
+    <menuitem action="%(action_hospital_patient)d" .../>  --> INCORRECTO en menuitem
+
+  El formato "%(...)d" se usa en botones type="action" en vistas XML:
+    <button name="%(action_hospital_patient)d" type="action"/>  --> CORRECTO en boton
+
+----------------------------------------
+ERRORES COMUNES
+----------------------------------------
+[X] "ValueError: External ID not found" al instalar el modulo
+    Causa:    El menuitem referencia un action que no existe o cuyo archivo
+              se carga despues del menus.xml.
+    Solucion: Mover menus.xml al ultimo lugar en la lista 'data'.
+
+[X] El menu aparece pero no hace nada al hacer clic
+    Causa:    El menu de nivel 2 tiene action cuando deberia ser solo
+              un contenedor sin action, o el action referenciado no existe.
+    Solucion: Los menus de nivel 2 (categorias) no deben tener action
+              a menos que sean items de hoja.
+
+[X] El menu de la aplicacion no aparece en la pantalla de inicio
+    Causa:    Falta web_icon en el menu raiz o el modulo no esta marcado
+              como 'application': True en el manifest.
+    Solucion: Agregar web_icon y verificar manifest.
+
+[X] El menu se ve para todos los usuarios aunque tiene groups
+    Causa:    El usuario pertenece al grupo indicado o es admin.
+    Solucion: Verificar grupos del usuario actual. El admin siempre ve todo.
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. MENUS AL FINAL: menus.xml siempre es el ultimo archivo en 'data'.
+   Todos los actions que referencia deben estar cargados antes.
+
+2. TRES NIVELES MAXIMO: La jerarquia de menus en Odoo esta optimizada
+   para 3 niveles. Mas niveles degradan la experiencia de usuario.
+
+3. CONFIGURACION AL FINAL Y CON GRUPO: El menu de Configuracion siempre
+   va al final (sequence alto) y protegido con grupo de manager.
+
+4. IDS DESCRIPTIVOS: Usa IDs que describan el nivel y contenido:
+   'menu_modulo_seccion_item' --> 'menu_hospital_pacientes_all'
+
+5. SEQUENCE POR DECENAS: Usa secuencias de 10 en 10 (10, 20, 30).
+   Asi puedes insertar items en el medio sin renumerar todo.
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-actions.txt   --> Los actions que abren los menus
+  notas-views.txt     --> Las vistas que muestran los actions
+  notas-security.txt  --> Grupos que controlan visibilidad de menus
+
+========================================

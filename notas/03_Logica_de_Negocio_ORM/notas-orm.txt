@@ -1,87 +1,247 @@
 ========================================
-       GUÍA MAESTRA: EL ORM DE ODOO
+  GUIA: ORM DE ODOO
+========================================
+  SECCION : 03_Logica_de_Negocio_ORM
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-orm.txt
 ========================================
 
 ----------------------------------------
-DESCRIPCIÓN TÉCNICA
+DESCRIPCION TECNICA
 ----------------------------------------
-El ORM es la capa que traduce objetos Python a consultas SQL. En 
-Odoo 17/18, el ORM está optimizado para trabajar con "Recordsets" 
-(conjuntos de registros), permitiendo operaciones masivas con 
-una sola línea de código.
-
-----------------------------------------
-1. MÉTODOS DE BÚSQUEDA Y LECTURA
-----------------------------------------
-search(domain)   --> Retorna un recordset con los registros que 
-                     cumplen el dominio (filtro).
-                     Ej: self.env['res.partner'].search([('is_company', '=', True)])
-
-search_count()   --> Retorna solo el número de registros. Más 
-                     eficiente que len(search()).
-
-browse(ids)      --> Retorna un recordset para los IDs proporcionados.
-                     No hace consulta a DB hasta que se accede a un campo.
-
-exists()         --> Filtra un recordset dejando solo los registros 
-                     que realmente existen en la DB.
+El ORM (Object-Relational Mapping) de Odoo traduce operaciones Python
+a consultas SQL sobre PostgreSQL. Permite crear, leer, actualizar y
+eliminar registros sin escribir SQL. Toda la logica de negocio en
+modelos Odoo interactua con la BD exclusivamente a traves del ORM.
 
 ----------------------------------------
-2. MÉTODOS DE ESCRITURA Y CREACIÓN
+1. BUSCAR REGISTROS (search / browse)
 ----------------------------------------
-create(vals)     --> Crea un nuevo registro. 'vals' es un diccionario.
-                     Ej: self.create({'name': 'Nuevo'})
 
-write(vals)      --> Actualiza los registros del recordset actual.
-                     Ej: self.write({'active': False})
+search() --> Retorna un recordset con los registros que cumplen el dominio.
+    # Buscar todos los clientes activos
+    clientes = self.env['res.partner'].search([
+        ('customer_rank', '>', 0),
+        ('active', '=', True),
+    ])
 
-unlink()         --> Elimina los registros del recordset.
+    # Con limite y orden
+    ultimos = self.env['sale.order'].search(
+        [('state', '=', 'sale')],
+        limit=10,
+        order='date_order desc'
+    )
 
-copy(default)    --> Duplica el registro actual. 'default' permite
-                     cambiar valores en la copia.
+search_count() --> Retorna el NUMERO de registros (int), sin cargar datos.
+    total = self.env['sale.order'].search_count([('state', '=', 'draft')])
 
-----------------------------------------
-3. MANIPULACIÓN DE RECORDSETS
-----------------------------------------
-Odoo trata los registros como colecciones (sets).
-- filtered(func) --> Retorna registros que cumplen una condición Python.
-- mapped(func)   --> Retorna una lista o recordset de valores específicos.
-- sorted(func)   --> Retorna el recordset ordenado por una clave.
-
-Ejemplo:
-emails = self.order_line.mapped('product_id.name')
-
-----------------------------------------
-4. EL ENTORNO (SELF.ENV)
-----------------------------------------
-self.env         --> Es el núcleo del ORM. Contiene:
-- self.env.user  --> Registro del usuario actual.
-- self.env.company -> Registro de la compañía actual.
-- self.env.cr    --> El cursor de la base de datos (SQL).
-- self.env.ref() --> Retorna el registro de un ID XML (External ID).
+browse() --> Carga registros directamente por ID (sin filtro de dominio).
+    pedido = self.env['sale.order'].browse(42)
+    pedidos = self.env['sale.order'].browse([1, 2, 3])
 
 ----------------------------------------
-REGLAS DE ORO DEL EXPERTO
+2. CREAR REGISTROS (create)
 ----------------------------------------
-1. EVITAR BUCLES FOR PARA WRITE: 
-   - Mal: for rec in self: rec.write({'state': 'done'})
-   - Bien: self.write({'state': 'done'})  --> Una sola query SQL.
 
-2. SINGLETONS: Si un método usa 'self.name' y el recordset tiene 
-   más de un registro, Odoo lanzará un "Expected singleton" error.
-   Usa 'self.ensure_one()' para validar o itera con 'for'.
+create() --> Crea uno o varios registros. Retorna el recordset creado.
 
-3. BROWSE VS SEARCH: Usa browse si ya tienes los IDs; es mucho más 
-   rápido porque no ejecuta un SELECT inmediatamente (Lazy Loading).
+    # Crear uno:
+    nuevo = self.env['res.partner'].create({
+        'name'  : 'Cliente Nuevo',
+        'email' : 'cliente@ejemplo.com',
+        'phone' : '+51 999 000 000',
+    })
 
-4. TRABAJO CON IDS: Siempre que sea posible, trabaja con IDs en 
-   lugar de objetos para ahorrar memoria en procesos masivos.
+    # Crear varios (Odoo 16+/18 - mas eficiente):
+    nuevos = self.env['res.partner'].create([
+        {'name': 'Cliente A', 'email': 'a@a.com'},
+        {'name': 'Cliente B', 'email': 'b@b.com'},
+    ])
+
+CREAR CON LINEAS (One2many):
+    pedido = self.env['sale.order'].create({
+        'partner_id': partner.id,
+        'order_line': [
+            (0, 0, {'product_id': prod.id, 'product_uom_qty': 2}),
+        ]
+    })
 
 ----------------------------------------
-OPERACIONES DE CONJUNTO
+3. ACTUALIZAR REGISTROS (write)
 ----------------------------------------
-recordset1 | recordset2  --> Unión
-recordset1 & recordset2  --> Intersección
-recordset1 - recordset2  --> Diferencia
+
+write() --> Actualiza campos en todos los registros del recordset.
+    # Actualizar un campo en varios registros a la vez
+    pedidos.write({'state': 'cancel'})
+
+    # Actualizar en un registro especifico
+    self.write({'fecha_entrega': fields.Date.today()})
+
+    # Escribir en campo relacional (reemplazar lista Many2many):
+    record.write({'etiquetas_ids': [(6, 0, [id1, id2, id3])]})
+
+COMANDOS PARA CAMPOS O2M Y M2M:
+    (0, 0, {values})    --> Crear y agregar registro nuevo
+    (1, id, {values})   --> Actualizar registro existente por ID
+    (2, id, 0)          --> Eliminar y desenlazar registro por ID
+    (3, id, 0)          --> Desenlazar sin eliminar (solo M2M)
+    (4, id, 0)          --> Enlazar registro existente (solo M2M)
+    (5, 0, 0)           --> Desenlazar todos (solo M2M)
+    (6, 0, [ids])       --> Reemplazar toda la lista con estos IDs
+
+----------------------------------------
+4. ELIMINAR REGISTROS (unlink)
+----------------------------------------
+
+unlink() --> Elimina todos los registros del recordset de la BD.
+    registros_viejos = self.env['mi.modelo'].search([
+        ('estado', '=', 'cancelado'),
+        ('fecha', '<', '2024-01-01'),
+    ])
+    registros_viejos.unlink()
+
+ATENCION: unlink() dispara el metodo unlink() del modelo, que puede
+tener validaciones. Si un _sql_constraint o una regla lo impide,
+lanzara una excepcion.
+
+----------------------------------------
+5. DOMINOS DE BUSQUEDA
+----------------------------------------
+Proposito: Filtros que se pasan a search(), filtered(), etc.
+Formato: Lista de tuplas (campo, operador, valor).
+
+OPERADORES COMUNES:
+  ('campo', '=', valor)        --> Igual
+  ('campo', '!=', valor)       --> Distinto
+  ('campo', '>', valor)        --> Mayor que
+  ('campo', '>=', valor)       --> Mayor o igual
+  ('campo', '<', valor)        --> Menor que
+  ('campo', '<=', valor)       --> Menor o igual
+  ('campo', 'like', 'texto')   --> Contiene (case sensitive)
+  ('campo', 'ilike', 'texto')  --> Contiene (case insensitive)
+  ('campo', 'in', [1,2,3])     --> Esta en la lista
+  ('campo', 'not in', [1,2])   --> No esta en la lista
+  ('campo', '=', False)        --> Es nulo/False
+  ('campo', '!=', False)       --> No es nulo
+
+OPERADORES LOGICOS (se ponen ANTES de las tuplas que afectan):
+  '&'  --> AND (es el default si no se especifica)
+  '|'  --> OR
+  '!'  --> NOT
+
+EJEMPLO CON OR:
+    domain = [
+        '|',
+        ('state', '=', 'draft'),
+        ('state', '=', 'sent'),
+    ]
+
+EJEMPLO COMPLEJO (A AND (B OR C)):
+    domain = [
+        ('active', '=', True),
+        '|',
+        ('type', '=', 'cliente'),
+        ('type', '=', 'proveedor'),
+    ]
+
+----------------------------------------
+6. METODOS DE RECORDSET
+----------------------------------------
+
+filtered() --> Filtra un recordset en Python (no SQL).
+    pedidos_grandes = pedidos.filtered(lambda r: r.amount_total > 1000)
+    activos = socios.filtered('active')
+
+mapped() --> Extrae valores de un campo de todos los registros.
+    nombres = socios.mapped('name')              # Lista de nombres
+    totales = pedidos.mapped('amount_total')     # Lista de totales
+    partners = lineas.mapped('order_id.partner_id')  # Recordset de partners
+
+sorted() --> Ordena un recordset en Python.
+    por_fecha = pedidos.sorted('date_order', reverse=True)
+    por_total = pedidos.sorted(key=lambda r: r.amount_total)
+
+ensure_one() --> Lanza error si el recordset no tiene exactamente 1 registro.
+    self.ensure_one()   # Usar al inicio de metodos que esperan 1 registro
+
+exists() --> Verifica que los registros aun existen en la BD.
+    if registro.exists():
+        registro.write({'campo': valor})
+
+----------------------------------------
+7. CONTEXTO Y ENTORNO (env)
+----------------------------------------
+
+self.env                    --> El entorno actual (usuario, idioma, etc.)
+self.env.user               --> Usuario actual (res.users)
+self.env.company            --> Compania activa actual
+self.env.lang               --> Idioma activo ('es_PE', 'en_US')
+self.env.context            --> Diccionario de contexto actual
+self.env['modelo']          --> Acceder a cualquier modelo del sistema
+
+with_context():             --> Ejecutar con contexto adicional
+    sin_mail = record.with_context(mail_notrack=True)
+    sin_mail.write({'state': 'done'})   --> No registra en chatter
+
+sudo():                     --> Ejecutar sin restricciones de seguridad
+    admin_env = self.sudo()
+    admin_env.write({'campo_restringido': valor})
+
+with_user():                --> Ejecutar como otro usuario
+    otro_usuario = self.with_user(user_id)
+
+----------------------------------------
+ERRORES COMUNES
+----------------------------------------
+[X] "Expected singleton" en un metodo
+    Causa:    Se llamo a un metodo que requiere 1 registro en un recordset
+              con 0 o varios registros.
+    Solucion: Usar self.ensure_one() al inicio del metodo, o iterar
+              con 'for record in self:'.
+
+[X] Los cambios con write() no se guardan
+    Causa:    Se escribio en una copia del recordset, no en el original.
+              O se uso sudo() y hubo un rollback.
+    Solucion: Verificar que no haya excepciones posteriores que hagan
+              rollback de la transaccion.
+
+[X] search() tarda demasiado en modelos con muchos registros
+    Causa:    El dominio filtra por campos sin indice.
+    Solucion: Agregar index=True a los campos mas usados en busquedas.
+              Ver notas-performance.txt.
+
+[X] El comando (6, 0, ids) en write() elimina registros que no deberia
+    Causa:    El comando 6 REEMPLAZA toda la lista Many2many con los IDs dados.
+              Si la lista esta vacia o incompleta, elimina los demas enlaces.
+    Solucion: Usar (4, id) para agregar sin borrar, o construir la lista
+              completa de IDs antes de usar (6, 0, ids).
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. ITERA CON FOR: Nunca accedas a campos de un recordset multiple
+   directamente (self.name en un set de varios da error).
+   Usa: for record in self: record.name
+
+2. FILTERED VS SEARCH: usa search() para filtrar en BD (eficiente),
+   usa filtered() para filtrar en Python sobre un recordset ya cargado.
+
+3. SUDO() CON CRITERIO: sudo() evita todas las reglas de acceso.
+   Usalo solo cuando sea estrictamente necesario y documenta por que.
+
+4. WITH_CONTEXT PARA NO DISPARAR EFECTOS: Para operaciones masivas
+   que no deben enviar emails ni registrar en chatter, usa
+   with_context(mail_notrack=True, tracking_disable=True).
+
+5. COMANDOS O2M/M2M: Memoriza los comandos (0,0,{}) crear,
+   (4,id) enlazar, (3,id) desenlazar, (6,0,ids) reemplazar todo.
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-models.txt      --> Donde se usan los metodos ORM
+  notas-decorators.txt  --> Decoradores @api que complementan el ORM
+  notas-performance.txt --> Optimizar consultas ORM
+  notas-sql.txt         --> Cuando salir del ORM a SQL crudo
 
 ========================================

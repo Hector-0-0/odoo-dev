@@ -1,73 +1,184 @@
 ========================================
-    GUÍA MAESTRA: MANIFEST ODOO 17/18
+  GUIA: EL ARCHIVO __MANIFEST__.PY
+========================================
+  SECCION : 01_Arquitectura_y_Base
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-manifest.txt
 ========================================
 
 ----------------------------------------
-DESCRIPCIÓN TÉCNICA
+DESCRIPCION TECNICA
 ----------------------------------------
-El archivo __manifest__.py es un diccionario Python que actúa como
-el "DNI" del módulo. Define metadatos, dependencias, carga de datos
-y configuración de la interfaz para el servidor Odoo.
+El __manifest__.py es el "pasaporte" de un modulo Odoo.
+Es un diccionario Python que le dice al sistema quien es el modulo,
+que necesita para funcionar, y que archivos lo componen.
+Sin este archivo, Odoo no reconoce la carpeta como un modulo valido.
 
 ----------------------------------------
-ATRIBUTOS DE IDENTIDAD
+1. ESTRUCTURA MINIMA OBLIGATORIA
 ----------------------------------------
-'name'         --> Nombre comercial (visible en la UI)
-'version'      --> Versión del módulo (Ej: 17.0.1.0.0)
-'author'       --> Desarrollador o empresa responsable
-'website'      --> URL de documentación o soporte
-'license'      --> Licencia (v17+ requiere LGPL-3 o superior)
-'category'     --> Ubicación en el catálogo (Ej: 'Sales/CRM')
+Proposito: Lo minimo para que Odoo cargue el modulo.
+
+EJEMPLO:
+    {
+        'name': 'Mi Modulo',
+        'version': '18.0.1.0.0',
+        'depends': ['base'],
+    }
+
+CONVENCION DE VERSION:
+  18.0  ==>  Version de Odoo compatible (prefijo obligatorio)
+  1.0.0 ==>  Mayor.Menor.Parche del modulo propio
 
 ----------------------------------------
-CONTROL DE CARGA Y LÓGICA
+2. ESTRUCTURA COMPLETA RECOMENDADA
 ----------------------------------------
-'depends'      --> Módulos requeridos para funcionar (Carga previa)
-'data'         --> XML/CSV de carga única (Vistas, Seguridad, Data)
-'demo'         --> Archivos cargados solo si "Datos de prueba" está activo
-'assets'       --> Diccionario para JS, CSS y componentes OWL
-'installable'  --> Define si el módulo es funcional (True/False)
-'application'  --> Indica si es un módulo principal (App)
-'auto_install' --> Instalación forzada si sus dependencias existen
+Proposito: Modulo listo para produccion o publicacion en App Store.
+
+    {
+        # --- IDENTIDAD ---
+        'name'        : 'Nombre Visible del Modulo',
+        'summary'     : 'Descripcion corta, max 1 linea',
+        'description' : 'Descripcion larga en texto plano o RST.',
+        'author'      : 'Tu Nombre o Empresa',
+        'website'     : 'https://tu-sitio.com',
+        'category'    : 'Sales/CRM',
+        'version'     : '18.0.1.0.0',
+        'license'     : 'LGPL-3',        # LGPL-3 | OPL-1 | AGPL-3
+
+        # --- DEPENDENCIAS ---
+        'depends': ['base', 'sale', 'account'],
+
+        # --- ARCHIVOS DE DATOS (el ORDEN importa) ---
+        'data': [
+            'security/ir.model.access.csv',   # Siempre primero
+            'data/datos_iniciales.xml',
+            'views/vistas_principales.xml',
+            'views/menus.xml',                # Menus siempre al final
+            'report/plantillas_pdf.xml',
+        ],
+
+        # --- ASSETS FRONTEND: JS/CSS/OWL (Odoo 17+/18) ---
+        'assets': {
+            'web.assets_backend': [
+                'mi_modulo/static/src/js/mi_componente.js',
+                'mi_modulo/static/src/css/estilos.css',
+            ],
+        },
+
+        # --- DEMO (solo entornos de prueba) ---
+        'demo': ['demo/datos_demo.xml'],
+
+        # --- FLAGS ---
+        'installable' : True,
+        'auto_install': False,
+        'application' : True,
+    }
 
 ----------------------------------------
-ESTRUCTURA PROFESIONAL (CÓDIGO)
+3. CAMPO 'depends' - REGLAS IMPORTANTES
 ----------------------------------------
-{
-    'name': 'Custom Module Specialist',
-    'version': '17.0.1.0.0',                      --> v17 + Major.Minor.Patch
-    'category': 'Technical Settings',
-    'summary': 'Breve descripción de la mejora',
-    'author': 'Tu Nombre',
-    'license': 'LGPL-3',                         --> Estándar obligatorio
-    'depends': ['base', 'mail'],                 --> 'mail' añade el chatter
-    'data': [
-        'security/ir.model.access.csv',          --> SEGURIDAD PRIMERO
-        'views/model_views.xml',                 --> Vistas XML
-        'views/menu_views.xml',                  --> Menús separados
-    ],
+Proposito: Declarar modulos que deben cargarse ANTES que el tuyo.
+
+  [OK]  Solo incluye dependencias directas, no las transitivas.
+  [OK]  Si usas campos de 'sale.order', pon 'sale', no solo 'base'.
+  [OK]  Siempre incluye 'base' si no dependes de otro modulo.
+  [MAL] No incluyas modulos que no uses: ralentiza la instalacion.
+
+EJEMPLO REAL:
+  Modulo que extiende facturas y agrega chatter:
+  'depends': ['account', 'mail']
+
+----------------------------------------
+4. CAMPO 'data' - ORDEN DE CARGA
+----------------------------------------
+El orden en la lista 'data' es el orden en que Odoo carga los archivos.
+Si un archivo referencia un registro de otro, ese otro debe ir ANTES.
+
+ORDEN CORRECTO:
+  1. security/ir.model.access.csv  --> Permisos (siempre primero)
+  2. data/secuencias.xml           --> Datos base sin dependencias
+  3. views/formularios.xml         --> Vistas de modelos
+  4. views/menus.xml               --> Menus (referencian actions de vistas)
+
+ORDEN INCORRECTO (causara error de carga):
+  1. views/menus.xml               --> El menu referencia un action inexistente
+  2. views/formularios.xml
+  3. security/ir.model.access.csv
+
+----------------------------------------
+5. CAMPO 'assets' - ODOO 17+ / 18
+----------------------------------------
+Proposito: Registrar archivos JS, CSS y OWL en el bundle correcto.
+Desde Odoo 17, JS/CSS NO van en 'data'. Van SIEMPRE en 'assets'.
+
+BUNDLES PRINCIPALES:
+  web.assets_backend  --> Para el backend (ERP)
+  web.assets_frontend --> Para el portal y sitio web
+  web.assets_common   --> Para ambos entornos
+
+EJEMPLO REAL:
     'assets': {
         'web.assets_backend': [
-            'module_name/static/src/js/*.js',    --> Carga de lógica JS
-            'module_name/static/src/xml/*.xml',  --> Plantillas OWL
+            'mi_modulo/static/src/components/MiWidget.js',
+            'mi_modulo/static/src/components/MiWidget.xml',  # template OWL
+            'mi_modulo/static/src/css/mi_widget.css',
         ],
     },
-    'installable': True,
-    'application': False,
-}
 
 ----------------------------------------
-REGLAS DE ORO DEL EXPERTO
+ERRORES COMUNES
 ----------------------------------------
-1. SEGURIDAD: El archivo CSV de seguridad debe ser el PRIMERO en 'data'.
-2. VERSIONAMIENTO: Usa siempre el prefijo de la versión de Odoo (17.0.x).
-3. DEPENDENCIAS: Si heredas una vista de 'sale', DEBES incluir 'sale' en 'depends'.
-4. IMÁGENES: El icono del módulo debe estar en: static/description/icon.png
+[X] "Module not found" al instalar
+    Causa:    El modulo en 'depends' no existe o tiene typo.
+    Solucion: Verificar nombre exacto (ej: 'sale' no 'sale_order').
+
+[X] Acceso denegado al abrir una vista
+    Causa:    El CSV de permisos va despues de las vistas en 'data'.
+    Solucion: Mover 'security/ir.model.access.csv' al primer lugar.
+
+[X] El modulo no aparece en la lista de Apps
+    Causa:    'installable' es False o falta el campo.
+    Solucion: Agregar 'installable': True al manifest.
+
+[X] Cambios en el manifest no se reflejan
+    Causa:    Odoo cachea el manifest en base de datos.
+    Solucion: python odoo-bin -u nombre_modulo -d mi_db
+
+[X] JS/CSS no carga en el backend
+    Causa:    El archivo fue declarado en 'data' en lugar de 'assets'.
+    Solucion: Moverlo a 'assets' > 'web.assets_backend'.
 
 ----------------------------------------
-COMANDOS ÚTILES (TERMINAL)
+REGLAS DE ORO
 ----------------------------------------
--u <modulo>   --> Actualiza el módulo y procesa cambios en el manifest
--i <modulo>   --> Instala el módulo por primera vez desde consola
+1. VERSION: Usa siempre '18.0.X.Y.Z'. El prefijo '18.0' es obligatorio
+   para compatibilidad con OCA y App Store.
+
+2. LICENCIA: Comercial = 'OPL-1'. Open source = 'LGPL-3'.
+   Nunca lo dejes vacio en modulos publicados.
+
+3. ORDEN EN DATA: security/ siempre primero. Menus siempre al final.
+
+4. ASSETS: Desde Odoo 17+, JS/CSS/OWL van en 'assets', nunca en 'data'.
+
+5. AUTO_INSTALL: Solo para modulos "bridge" que conectan dos modulos
+   (ej: sale_account). Nunca en modulos de funcionalidad principal.
+
+----------------------------------------
+CUANDO USAR CADA OPCION
+----------------------------------------
+  Modulo interno sin publicar?   --> Estructura minima es suficiente.
+  Modulo para OCA o App Store?   --> Estructura completa obligatoria.
+  Modulo que se activa solo?     --> 'auto_install': True
+  Modulo con interfaz JS/OWL?    --> Usar clave 'assets', no 'data'.
+  Modulo solo de datos/config?   --> 'application': False
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-init.txt        --> El __init__.py que acompana al manifest
+  notas-scaffolding.txt --> Generar estructura completa automaticamente
+  notas-inheritance.txt --> Como extender modulos desde el manifest
 
 ========================================

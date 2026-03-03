@@ -1,74 +1,181 @@
 ========================================
-      GUÍA MAESTRA: SCAFFOLDING (v17/18)
+  GUIA: SCAFFOLDING - ESTRUCTURA DE MODULO
+========================================
+  SECCION : 01_Arquitectura_y_Base
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-scaffolding.txt
 ========================================
 
 ----------------------------------------
-DESCRIPCIÓN TÉCNICA
+DESCRIPCION TECNICA
 ----------------------------------------
-El Scaffolding es la estructura de directorios estandarizada de un 
-módulo. Seguir esta arquitectura es obligatorio para que el servidor 
-localice activos, vistas y lógica de forma eficiente.
+Scaffolding es el proceso de crear la estructura de carpetas y archivos
+base de un modulo Odoo desde cero. Odoo incluye un comando oficial
+para generarla automaticamente, pero es clave entender que crea y
+por que, para poder adaptarla a proyectos reales.
 
 ----------------------------------------
-ESTRUCTURA DE CARPETAS PROFESIONAL
+1. COMANDO OFICIAL DE ODOO
 ----------------------------------------
+Proposito: Generar la estructura minima de un modulo con un solo comando.
+
+SINTAXIS:
+  python odoo-bin scaffold nombre_modulo ruta_destino
+
+EJEMPLO REAL:
+  python odoo-bin scaffold hospital_gestion ./custom-addons
+
+RESULTADO: Crea la siguiente estructura automaticamente:
+  hospital_gestion/
+  |-- __init__.py
+  |-- __manifest__.py
+  |-- models/
+  |   |-- __init__.py
+  |   |-- models.py
+  |-- views/
+  |   |-- views.xml
+  |   |-- templates.xml
+  |-- security/
+  |   |-- ir.model.access.csv
+  |-- demo/
+  |   |-- demo.xml
+  |-- controllers/
+      |-- __init__.py
+      |-- controllers.py
+
+----------------------------------------
+2. ESTRUCTURA RECOMENDADA PARA PRODUCCION
+----------------------------------------
+Proposito: Estructura expandida para modulos reales y mantenibles.
+
 mi_modulo/
-├── __init__.py              --> Orquestador de Python
-├── __manifest__.py          --> Metadatos y carga de archivos
-├── controllers/             --> Endpoints HTTP (Rutas web/API)
-├── data/                    --> XML de datos (Secuencias, email templates)
-├── demo/                    --> XML con datos de prueba
-├── i18n/                    --> Archivos de traducción (.pot, .po)
-├── models/                  --> Definición de objetos de negocio
-├── report/                  --> Plantillas QWeb y lógica de reportes PDF
-├── security/                --> CSV de accesos y XML de reglas (Rules)
-├── static/                  --> Archivos públicos (CSS, JS, IMG, XML OWL)
-│   ├── description/         --> icon.png y descripción del módulo
-│   ├── src/                 --> Código fuente frontend
-│   │   ├── js/              --> Lógica OWL / JS
-│   │   ├── xml/             --> Plantillas OWL (vistas JS)
-│   │   └── scss/            --> Estilos CSS avanzados
-├── views/                   --> Definición de la interfaz (XML)
-└── wizard/                  --> Modelos transitorios y sus vistas
+|-- __init__.py
+|-- __manifest__.py
+|
+|-- models/                   --> Modelos de datos (archivos .py)
+|   |-- __init__.py
+|   |-- mi_modelo.py
+|
+|-- views/                    --> Vistas XML (form, tree, kanban, search)
+|   |-- mi_modelo_views.xml
+|   |-- menus.xml             --> Siempre separado
+|
+|-- security/                 --> Permisos y reglas de acceso
+|   |-- ir.model.access.csv
+|   |-- security.xml          --> ir.rule si se necesitan
+|
+|-- data/                     --> Datos iniciales que se cargan al instalar
+|   |-- data.xml
+|
+|-- demo/                     --> Datos de ejemplo para entornos de prueba
+|   |-- demo.xml
+|
+|-- wizards/                  --> TransientModels (asistentes paso a paso)
+|   |-- __init__.py
+|   |-- mi_wizard.py
+|   |-- mi_wizard_views.xml
+|
+|-- report/                   --> Reportes PDF (QWeb)
+|   |-- mi_reporte.xml
+|   |-- mi_reporte_template.xml
+|
+|-- controllers/              --> Rutas HTTP y endpoints web
+|   |-- __init__.py
+|   |-- main.py
+|
+|-- static/                   --> Archivos estaticos (JS, CSS, imagenes)
+|   |-- description/
+|   |   |-- icon.png          --> Icono del modulo (128x128 px)
+|   |-- src/
+|       |-- js/
+|       |-- css/
+|       |-- components/       --> Componentes OWL
+|
+|-- tests/                    --> Tests unitarios
+    |-- __init__.py
+    |-- test_mi_modelo.py
 
 ----------------------------------------
-PROCESO DE CREACIÓN (PASO A PASO)
+3. ARCHIVOS OBLIGATORIOS VS OPCIONALES
 ----------------------------------------
-1. CREACIÓN POR COMANDO:
-   Odoo permite generar esta base automáticamente:
-   $ odoo-bin scaffold <nombre_modulo> <ruta_destino>
 
-2. LIMPIEZA INICIAL:
-   El comando scaffold crea archivos de ejemplo. Un experto borra
-   lo innecesario y renombra 'models/models.py' a algo descriptivo
-   como 'models/paciente.py'.
+OBLIGATORIOS (sin estos, el modulo no funciona):
+  __init__.py           --> Punto de entrada Python
+  __manifest__.py       --> Metadata y configuracion del modulo
 
-3. PERMISOS DE ARCHIVO:
-   En sistemas Linux, asegúrate de que el usuario de Odoo tenga
-   permisos de lectura sobre estas carpetas.
+CASI SIEMPRE NECESARIOS:
+  models/__init__.py    --> Para registrar modelos
+  models/mi_modelo.py   --> Al menos un modelo
+  security/ir.model.access.csv --> Sin esto, nadie puede acceder al modelo
+  views/mi_views.xml    --> Para ver el modelo en la interfaz
 
-----------------------------------------
-REGLAS DE ORO DEL EXPERTO
-----------------------------------------
-1. NOMBRES TÉCNICOS: Usa siempre snake_case para archivos y carpetas.
-   Ej: sale_order_line.py, NO SaleOrderLine.py.
-
-2. SEPARACIÓN DE VISTAS: No mezcles vistas de diferentes modelos en
-   un solo archivo XML. Crea uno por modelo para facilitar el debug.
-   Ej: paciente_views.xml, consulta_views.xml.
-
-3. CARPETA STATIC: Todo lo que esté aquí es accesible vía URL. No 
-   guardes lógica sensible o privada en esta carpeta.
-
-4. DESCRIPTION: El icono debe ser icon.png (256x256px) para que se 
-   vea nítido en el tablero de Odoo.
+OPCIONALES (segun funcionalidad):
+  controllers/          --> Solo si el modulo tiene rutas web/API
+  wizards/              --> Solo si hay flujos de asistente
+  report/               --> Solo si hay reportes PDF
+  static/               --> Solo si hay JS/CSS/imagenes
+  tests/                --> Recomendado siempre, obligatorio en OCA
 
 ----------------------------------------
-CONSEJOS DE MANTENIMIENTO
+4. CONVENCION DE NOMBRES
 ----------------------------------------
-- Si tu carpeta 'models/' crece mucho (más de 10 archivos), usa
-  subcarpetas pero recuerda actualizar los __init__.py recursivamente.
-- Mantén la carpeta 'data/' para registros que el usuario NO debe
-  borrar, como tipos de documentos o configuraciones base.
+
+MODULO:        snake_case            --> hospital_gestion, sale_custom
+MODELOS PY:    snake_case            --> hospital_patient.py
+VISTAS XML:    modelo + _views.xml   --> hospital_patient_views.xml
+CLASES PY:     PascalCase            --> class HospitalPatient(models.Model)
+MODELOS ODOO:  punto.separado        --> hospital.patient
+CAMPOS:        snake_case            --> fecha_ingreso, numero_historia
+
+----------------------------------------
+ERRORES COMUNES
+----------------------------------------
+[X] "odoo-bin scaffold" no reconoce el comando
+    Causa:    Se ejecuta desde la carpeta incorrecta.
+    Solucion: Ejecutar desde la raiz de la instalacion de Odoo donde
+              esta el archivo odoo-bin.
+
+[X] El modulo aparece en la lista pero da error al instalar
+    Causa:    El scaffold genero archivos de ejemplo con errores de sintaxis.
+    Solucion: Revisar models/models.py y limpiar el contenido de ejemplo.
+
+[X] La carpeta del modulo no aparece en Odoo
+    Causa:    La carpeta no esta en un directorio declarado en addons_path
+              del archivo odoo.conf.
+    Solucion: Agregar la ruta en odoo.conf:
+              addons_path = /ruta/a/custom-addons,/ruta/a/odoo/addons
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. USA SCAFFOLD COMO PUNTO DE PARTIDA: El comando oficial crea la base,
+   pero adapta la estructura a las necesidades reales del modulo.
+
+2. SEPARA MENUS DE VISTAS: Siempre crea un menus.xml separado de las
+   vistas. Facilita el mantenimiento y la herencia.
+
+3. UN MODELO, UN ARCHIVO: Cada modelo en su propio archivo .py.
+   No pongas 5 modelos en un solo archivo.
+
+4. ICON.PNG: Siempre agrega static/description/icon.png (128x128px).
+   Sin el, Odoo muestra un icono generico en la lista de Apps.
+
+5. ADDONS PATH: Tu carpeta de custom addons debe estar declarada
+   en el addons_path del odoo.conf o el modulo sera invisible.
+
+----------------------------------------
+CUANDO USAR CADA ESTRUCTURA
+----------------------------------------
+  Modulo simple (1-2 modelos)?    --> Estructura minima del scaffold.
+  Modulo mediano (3-5 modelos)?   --> Estructura recomendada de produccion.
+  Modulo grande (6+ modelos)?     --> Considera dividir en sub-modulos.
+  Modulo solo de herencia/vistas? --> Solo __init__.py, manifest y views/.
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-manifest.txt    --> Configurar el __manifest__.py generado
+  notas-init.txt        --> Configurar los __init__.py generados
+  notas-models.txt      --> Crear modelos dentro de la estructura
 
 ========================================

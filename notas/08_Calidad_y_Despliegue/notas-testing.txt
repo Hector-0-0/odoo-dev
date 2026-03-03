@@ -1,0 +1,263 @@
+========================================
+  GUIA: TESTING - PRUEBAS AUTOMATIZADAS
+========================================
+  SECCION : 08_Calidad_y_Despliegue
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-testing.txt
+========================================
+
+----------------------------------------
+DESCRIPCION TECNICA
+----------------------------------------
+Odoo usa el framework de testing de Python (unittest) integrado
+con su propio sistema de base de datos de pruebas.
+Los tests se ejecutan en una DB temporal que se crea y destruye
+automaticamente, garantizando aislamiento entre pruebas.
+Tipos disponibles: Unit Tests (Python) y Tours (JavaScript/UI).
+
+----------------------------------------
+1. ESTRUCTURA DE UN TEST
+----------------------------------------
+Proposito: Crear una prueba basica para un modelo.
+
+ARCHIVO: mi_modulo/tests/test_mi_modelo.py
+
+    from odoo.tests.common import TransactionCase
+    from odoo.exceptions import ValidationError
+    import logging
+
+    _logger = logging.getLogger(__name__)
+
+
+    class TestMiModelo(TransactionCase):
+        """
+        Tests para el modelo mi.modelo.
+        Hereda de TransactionCase: cada test corre en una transaccion
+        que se revierte al final (rollback automatico).
+        """
+
+        @classmethod
+        def setUpClass(cls):
+            """Se ejecuta UNA VEZ antes de todos los tests de la clase."""
+            super().setUpClass()
+            # Crear datos de prueba compartidos
+            cls.partner = cls.env['res.partner'].create({
+                'name': 'Cliente Test',
+                'email': 'test@test.com',
+            })
+
+        def setUp(self):
+            """Se ejecuta antes de CADA test individual."""
+            super().setUp()
+            # Crear datos que se necesitan frescos en cada test
+            self.orden = self.env['sale.order'].create({
+                'partner_id': self.partner.id,
+            })
+
+        def test_crear_orden_correctamente(self):
+            """Test: verificar que una orden se crea con estado draft."""
+            self.assertEqual(
+                self.orden.state, 'draft',
+                "Una orden nueva debe estar en estado 'draft'."
+            )
+
+        def test_confirmar_orden(self):
+            """Test: confirmar una orden cambia su estado a sale."""
+            self.orden.action_confirm()
+            self.assertEqual(self.orden.state, 'sale')
+
+        def test_validacion_campo_requerido(self):
+            """Test: crear sin campo requerido debe lanzar ValidationError."""
+            with self.assertRaises(ValidationError):
+                self.env['mi.modelo'].create({'campo_requerido': False})
+
+        def test_calculo_total(self):
+            """Test: verificar calculo de un campo computado."""
+            linea = self.env['sale.order.line'].create({
+                'order_id': self.orden.id,
+                'product_id': self.env.ref('product.product_product_1').id,
+                'product_uom_qty': 3,
+                'price_unit': 100.0,
+            })
+            self.assertAlmostEqual(
+                linea.price_subtotal, 300.0,
+                msg="El subtotal debe ser qty * precio."
+            )
+
+ARCHIVO: mi_modulo/tests/__init__.py
+    from . import test_mi_modelo
+
+----------------------------------------
+2. CLASES BASE DE TESTING
+----------------------------------------
+
+TransactionCase
+  Cada test method corre en su propia transaccion con rollback.
+  Mas lento pero completamente aislado.
+  Usar para la mayoria de tests.
+
+    class MisTests(TransactionCase): ...
+
+SavepointCase (Odoo < 17) / HttpCase
+  Para tests que necesitan simular peticiones HTTP.
+  Necesario para Tours de JS.
+
+    class MisTours(HttpCase): ...
+
+SingleTransactionCase
+  Todos los tests de la clase comparten una sola transaccion.
+  Mas rapido pero los tests pueden interferir entre si.
+  Usar solo si los tests son estrictamente independientes.
+
+----------------------------------------
+3. ASSERTIONS MAS USADAS
+----------------------------------------
+
+self.assertEqual(a, b)          --> a == b
+self.assertNotEqual(a, b)       --> a != b
+self.assertTrue(x)              --> x es verdadero
+self.assertFalse(x)             --> x es falso
+self.assertIn(a, b)             --> a esta en b (lista, string, etc.)
+self.assertNotIn(a, b)          --> a no esta en b
+self.assertAlmostEqual(a, b)    --> a aprox igual a b (para floats)
+self.assertRaises(ExcepcionType)--> el codigo lanza esa excepcion
+
+EJEMPLO assertRaises:
+    with self.assertRaises(ValidationError):
+        registro.campo_invalido = -1
+
+----------------------------------------
+4. EJECUTAR LOS TESTS
+----------------------------------------
+Proposito: Correr los tests desde la terminal.
+
+EJECUTAR TODOS LOS TESTS DE UN MODULO:
+    python odoo-bin test -d mi_db --test-enable -i mi_modulo
+
+EJECUTAR UNA CLASE ESPECIFICA:
+    python odoo-bin test -d mi_db --test-enable \
+        --test-tags mi_modulo.TestMiModelo
+
+EJECUTAR UN TEST ESPECIFICO:
+    python odoo-bin test -d mi_db --test-enable \
+        --test-tags mi_modulo.TestMiModelo.test_confirmar_orden
+
+FLAG --test-enable:
+  Obligatorio para que Odoo ejecute los tests.
+  Sin este flag, los tests en /tests/ son ignorados.
+
+----------------------------------------
+5. TOURS DE JAVASCRIPT (UI TESTING)
+----------------------------------------
+Proposito: Probar flujos completos de la interfaz de usuario.
+
+ARCHIVO: mi_modulo/static/tests/tours/mi_tour.js
+
+    /** @odoo-module **/
+    import { registry } from "@web/core/registry";
+
+    registry.category("web_tour.tours").add("mi_tour_crear_cliente", {
+        test: true,
+        steps: () => [
+            {
+                trigger: '.o_main_navbar',
+                content: 'Verificar que el navbar existe',
+                run: () => {},
+            },
+            {
+                trigger: 'a[data-menu-xmlid="contacts.menu_contacts"]',
+                content: 'Hacer click en menu Contactos',
+                run: 'click',
+            },
+            {
+                trigger: '.o_list_button_add',
+                content: 'Click en Nuevo',
+                run: 'click',
+            },
+            {
+                trigger: '.o_field_widget[name="name"] input',
+                content: 'Escribir nombre del cliente',
+                run: 'edit Cliente de Tour Test',
+            },
+            {
+                trigger: '.o_form_button_save',
+                content: 'Guardar el registro',
+                run: 'click',
+            },
+            {
+                trigger: '.o_field_widget[name="name"]:contains("Cliente de Tour Test")',
+                content: 'Verificar que se guardo correctamente',
+                run: () => {},
+            },
+        ],
+    });
+
+EJECUTAR EL TOUR DESDE PYTHON TEST:
+    from odoo.tests import HttpCase
+
+    class TestMiTour(HttpCase):
+        def test_tour_crear_cliente(self):
+            self.start_tour(
+                '/web',
+                'mi_tour_crear_cliente',
+                login='admin'
+            )
+
+----------------------------------------
+ERRORES COMUNES
+----------------------------------------
+[X] "No tests were run"
+    Causa:    Falta el flag --test-enable o el archivo no esta
+              importado en tests/__init__.py.
+    Solucion: Agregar --test-enable y verificar los imports en __init__.py.
+
+[X] "Table already exists" en tests
+    Causa:    Se uso SingleTransactionCase y un test anterior creo datos
+              que interfieren con el siguiente.
+    Solucion: Cambiar a TransactionCase para aislamiento por rollback.
+
+[X] Test pasa en local pero falla en CI
+    Causa:    El test depende del orden de ejecucion o de datos
+              existentes en la base de datos.
+    Solucion: Crear TODOS los datos necesarios en setUp o setUpClass.
+              Nunca asumir que hay datos preexistentes.
+
+[X] Tour falla con "trigger not found"
+    Causa:    El selector CSS del trigger no existe o cambio.
+    Solucion: Inspeccionar el elemento en el navegador con DevTools
+              y actualizar el selector en el tour.
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. AISLAMIENTO: Cada test DEBE crear sus propios datos. Nunca
+   dependas de datos de otro test o de la DB existente.
+
+2. NOMBRES DESCRIPTIVOS: El nombre del metodo debe describir
+   exactamente que se prueba: test_confirmar_orden_sin_lineas_falla.
+
+3. UNA ASSERTION POR TEST: Idealmente cada test verifica UNA sola
+   cosa. Tests con muchas assertions son dificiles de debuggear.
+
+4. CUBRIR CASOS NEGATIVOS: No solo pruebas el camino feliz.
+   Prueba tambien que los errores se lanzan cuando deben.
+
+5. TESTS EN CI: Configurar para que los tests corran
+   automaticamente en cada push al repositorio.
+
+----------------------------------------
+CUANDO USAR CADA TIPO
+----------------------------------------
+  Logica de negocio en metodos Python?   --> TransactionCase
+  Validaciones y constraints?            --> TransactionCase + assertRaises
+  Flujo completo de UI?                  --> Tour de JavaScript + HttpCase
+  Performance de queries?                --> TransactionCase + assertQueryCount
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-debugging.txt   --> Como depurar cuando un test falla
+  notas-orm.txt         --> Metodos ORM usados en los tests
+  notas-decorators.txt  --> Decoradores usados en metodos testeados
+
+========================================

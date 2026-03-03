@@ -1,82 +1,196 @@
 ========================================
-      GUÍA MAESTRA: MODELOS EN ODOO
+  GUIA: MODELOS EN ODOO
+========================================
+  SECCION : 02_Modelo_de_Datos
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-models.txt
 ========================================
 
 ----------------------------------------
-DESCRIPCIÓN TÉCNICA
+DESCRIPCION TECNICA
 ----------------------------------------
-Los modelos son clases de Python que Odoo mapea automáticamente a 
-tablas de base de datos (PostgreSQL) mediante su ORM. Definen la 
-estructura, restricciones y comportamiento de los datos.
-
-----------------------------------------
-TIPOS DE MODELOS (LA TRINIDAD DE ODOO)
-----------------------------------------
-1. models.Model (Persistente):
-   - Es el más común.
-   - Crea una tabla física permanente en PostgreSQL.
-   - Los datos se guardan hasta que se eliminen manualmente.
-
-2. models.TransientModel (Transitorio/Wizards):
-   - Se usa para asistentes (asistentes de ventas, reportes, etc.).
-   - Crea una tabla física, pero los datos son temporales.
-   - Odoo limpia estos registros periódicamente (vacuum) para no 
-     llenar la base de datos de basura.
-
-3. models.AbstractModel (Abstracto):
-   - No crea una tabla en la base de datos.
-   - Se usa como "plantilla" para que otros modelos hereden su lógica.
-   - Ejemplo común: 'report.abstract_report' para lógica de PDFs.
+Un modelo en Odoo es una clase Python que hereda de models.Model
+(u otras variantes). Representa una tabla en la base de datos
+PostgreSQL y define su estructura, comportamiento y relaciones.
+Cada modelo se registra en el ORM de Odoo al arrancar el servidor.
 
 ----------------------------------------
-ATRIBUTOS DE CLASE (METADATOS)
+1. TIPOS DE MODELOS
 ----------------------------------------
-_name        --> Identificador único (Ej: 'hospital.paciente') [OBLIGATORIO]
-_description --> Nombre legible para el usuario [OBLIGATORIO]
-_order       --> Orden por defecto en las vistas (Ej: 'date_start desc, name')
-_rec_name    --> Campo que se mostrará en los Many2one (Default: 'name')
-_table       --> Permite forzar un nombre de tabla SQL específico
-_inherit     --> Nombre del modelo que se desea extender o copiar
-_inherits    --> Diccionario para herencia por delegación
 
-----------------------------------------
-SINTAXIS PROFESIONAL
-----------------------------------------
-from odoo import models, fields
+models.Model         --> Modelo permanente. Crea tabla en la BD.
+                         Uso: La gran mayoria de entidades de negocio.
 
-class HospitalPaciente(models.Model):
-    _name = 'hospital.paciente'
-    _description = 'Registro de Pacientes'
-    _order = 'name'
-    _rec_name = 'full_name'
+models.TransientModel --> Modelo temporal. La tabla se limpia periodicamente.
+                          Uso: Wizards (asistentes, dialogos de confirmacion).
 
-    name = fields.Char(string='DNI', required=True)
-    full_name = fields.Char(string='Nombre Completo')
-    active = fields.Boolean(default=True)  --> Permite archivado lógico
+models.AbstractModel --> No crea tabla. Es una clase base reutilizable.
+                         Uso: Mixins propios con logica compartida.
 
 ----------------------------------------
-REGLAS DE ORO DEL EXPERTO
+2. ESTRUCTURA DE UN MODELO COMPLETO
 ----------------------------------------
-1. CONVENCIÓN DE NOMBRES: Usa puntos para separar módulos y nombres.
-   Correcto: 'sale.order'. Incorrecto: 'sale_order'.
 
-2. CAMPO ACTIVE: Si añades un campo 'active' (Boolean), Odoo activa 
-   automáticamente la funcionalidad de "Archivar/Desarchivar".
+    from odoo import models, fields, api
 
-3. ACCESO: Al crear un modelo nuevo, DEBES añadirlo en el archivo 
-   ir.model.access.csv, de lo contrario, no será visible ni para admin.
+    class HospitalPatient(models.Model):
+        _name        = 'hospital.patient'       --> Nombre tecnico (tabla en BD)
+        _description = 'Paciente del Hospital'  --> Descripcion legible (obligatoria)
+        _rec_name    = 'name'                   --> Campo que representa el registro
+        _order       = 'name asc'               --> Orden por defecto en vistas lista
+        _inherit     = ['mail.thread', 'mail.activity.mixin']
 
-4. EVITAR _TABLE: A menos que estés integrando una base de datos 
-   externa legacy, deja que Odoo nombre las tablas automáticamente.
+        # --- CAMPOS ---
+        name = fields.Char(
+            string='Nombre Completo',
+            required=True,
+            tracking=True              --> Registra cambios en el chatter
+        )
+        fecha_nacimiento = fields.Date('Fecha de Nacimiento')
+        activo = fields.Boolean('Activo', default=True)
+
+        # --- METODO CRUD SOBREESCRITO ---
+        @api.model_create_multi
+        def create(self, vals_list):
+            for vals in vals_list:
+                if not vals.get('name'):
+                    vals['name'] = 'Paciente Sin Nombre'
+            return super().create(vals_list)
 
 ----------------------------------------
-RESERVADOS POR EL SISTEMA
+3. ATRIBUTOS DE CLASE (_name, _description, etc.)
 ----------------------------------------
-Odoo crea automáticamente estos campos en cada tabla (salvo Abstract):
-- id (Primary Key)
-- create_uid (ID del usuario que creó el registro)
-- create_date (Fecha de creación)
-- write_uid (Último usuario que modificó)
-- write_date (Última fecha de modificación)
+
+_name           --> Nombre tecnico del modelo. Define el nombre de la tabla
+                    en BD (los puntos se convierten en guiones bajos).
+                    hospital.patient --> tabla: hospital_patient
+                    OBLIGATORIO en modelos nuevos.
+
+_description    --> Descripcion legible del modelo.
+                    OBLIGATORIO (Odoo muestra warning si falta).
+
+_rec_name       --> Campo usado como "nombre" del registro en Many2one,
+                    breadcrumbs, etc. Por defecto es 'name'.
+                    Cambiarlo si tu modelo no tiene campo 'name'.
+
+_order          --> Orden SQL por defecto al listar registros.
+                    Ejemplo: '_order = "fecha desc, name asc"'
+
+_table          --> Nombre personalizado de la tabla en BD.
+                    Raro de usar. Odoo lo genera automaticamente de _name.
+
+_inherit        --> Para herencia. Ver notas-inheritance.txt.
+
+_inherits       --> Para delegacion. Ver notas-inheritance.txt.
+
+_sql_constraints --> Restricciones a nivel SQL. Ver notas-sql.txt.
+
+_log_access     --> Si es False, no crea campos create_date, write_date, etc.
+                    Default: True.
+
+----------------------------------------
+4. METODOS CRUD - SOBREESCRITURA
+----------------------------------------
+Proposito: Agregar logica antes o despues de las operaciones basicas.
+
+CREATE - Odoo 18 usa @api.model_create_multi (no @api.model):
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            # Mi logica aqui
+            pass
+        return super().create(vals_list)
+
+WRITE:
+    def write(self, vals):
+        # Mi logica antes de guardar
+        result = super().write(vals)
+        # Mi logica despues de guardar
+        return result
+
+UNLINK (eliminar):
+    def unlink(self):
+        for record in self:
+            if record.estado == 'confirmado':
+                raise UserError('No se puede eliminar un registro confirmado.')
+        return super().unlink()
+
+IMPORTANTE - Odoo 18: Usa @api.model_create_multi en vez de
+@api.model para create(). Es el estandar desde Odoo 16+.
+
+----------------------------------------
+5. METODOS DE NOMBRE Y BUSQUEDA
+----------------------------------------
+
+name_get() --> DEPRECADO en Odoo 17+.
+               Usar el campo 'display_name' o sobreescribir _rec_name.
+
+name_search() --> Para personalizar busqueda en campos Many2one.
+    @api.model
+    def name_search(self, name='', args=None, operator='ilike', limit=100):
+        args = args or []
+        if name:
+            args += [('name', operator, name)]
+        return self.search(args, limit=limit).name_get()
+
+_name_search() --> Version interna, preferida en Odoo 17+/18.
+
+----------------------------------------
+ERRORES COMUNES
+----------------------------------------
+[X] "Table already exists" al instalar modulo
+    Causa:    Dos modelos tienen el mismo _name.
+    Solucion: Verificar que cada modelo tenga un _name unico.
+
+[X] Warning "_description is recommended" en el log
+    Causa:    Falta el atributo _description en la clase.
+    Solucion: Agregar _description = 'Descripcion del Modelo'.
+
+[X] El campo Many2one muestra IDs en vez de nombres
+    Causa:    El modelo referenciado no tiene campo 'name' y falta _rec_name.
+    Solucion: Definir _rec_name = 'campo_principal' en ese modelo.
+
+[X] create() no se ejecuta al crear desde la UI
+    Causa:    Se uso @api.model en vez de @api.model_create_multi (Odoo 18).
+    Solucion: Cambiar el decorador a @api.model_create_multi y ajustar
+              el parametro de vals a vals_list (lista).
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. _name EN SNAKE.CASE CON PUNTOS: Siempre usa el formato 'modulo.entidad'
+   Ejemplo: 'hospital.patient', 'hr.leave.custom'
+
+2. _description SIEMPRE: Odoo genera warnings y algunas vistas fallan
+   si no esta definido.
+
+3. SUPER() EN CRUD: Al sobreescribir create/write/unlink, siempre
+   llama a super(). Nunca omitirlo.
+
+4. CREATE_MULTI EN ODOO 18: Usa @api.model_create_multi para el
+   metodo create(). El parametro es vals_list (lista de dicts).
+
+5. UN MODELO POR ARCHIVO: Cada modelo en su propio archivo .py.
+   Facilita el mantenimiento y la lectura del codigo.
+
+----------------------------------------
+CUANDO USAR CADA TIPO DE MODELO
+----------------------------------------
+  Entidad de negocio permanente (Cliente, Factura, Tarea)?
+    --> models.Model
+
+  Asistente o dialogo temporal (Confirmar, Importar, Enviar)?
+    --> models.TransientModel (ver notas-wizards.txt)
+
+  Logica compartida entre varios modelos propios?
+    --> models.AbstractModel (mixin personalizado)
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-fields.txt      --> Tipos de campos para los modelos
+  notas-inheritance.txt --> Como heredar y extender modelos
+  notas-orm.txt         --> Como consultar y manipular registros
+  notas-wizards.txt     --> TransientModel en detalle
 
 ========================================

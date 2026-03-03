@@ -1,0 +1,222 @@
+========================================
+  GUIA: WIDGETS EN ODOO
+========================================
+  SECCION : 05_Interfaz_de_Usuario_Backend
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-widgets.txt
+========================================
+
+----------------------------------------
+DESCRIPCION TECNICA
+----------------------------------------
+Los widgets en Odoo controlan como se renderiza y comporta un campo
+en la interfaz de usuario. Cada tipo de campo tiene un widget por
+defecto, pero se puede sobreescribir con el atributo widget="" en
+el XML de la vista. Odoo 18 usa OWL (Owl Web Library) para los widgets.
+
+----------------------------------------
+1. WIDGETS PARA CAMPOS CHAR / TEXT
+----------------------------------------
+
+phone       --> Renderiza el campo como telefono con icono de llamada.
+    <field name="telefono" widget="phone"/>
+
+email       --> Renderiza como email con icono de correo (abre cliente mail).
+    <field name="email" widget="email"/>
+
+url         --> Renderiza como enlace clickeable.
+    <field name="sitio_web" widget="url"/>
+
+copy_clipboard --> Agrega boton para copiar el valor al portapapeles.
+    <field name="api_key" widget="copy_clipboard"/>
+
+code        --> Renderiza como editor de codigo (monospace, resaltado).
+    <field name="codigo_python" widget="code"/>
+
+html        --> Editor de texto enriquecido (WYSIWYG).
+    <field name="descripcion_html" widget="html"/>
+
+----------------------------------------
+2. WIDGETS PARA CAMPOS NUMERICOS
+----------------------------------------
+
+monetary    --> Muestra simbolo de moneda. Requiere currency_field.
+    <field name="monto" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+
+percentage  --> Muestra el numero como porcentaje (multiplica por 100).
+    <field name="descuento" widget="percentage"/>
+
+progressbar --> Muestra una barra de progreso. Requiere max_value.
+    <field name="progreso" widget="progressbar"
+           options="{'max_value': 'total', 'editable': True}"/>
+
+priority    --> Muestra estrellas para prioridad (0-3).
+    <field name="prioridad" widget="priority"/>
+
+gauge       --> Muestra un velocimetro/gauge circular.
+    <field name="rendimiento" widget="gauge" options="{'max_value': 100}"/>
+
+----------------------------------------
+3. WIDGETS PARA CAMPOS SELECTION / STATE
+----------------------------------------
+
+badge       --> Muestra el valor como etiqueta coloreada.
+    <field name="estado" widget="badge"
+           decoration-success="estado == 'aprobado'"
+           decoration-warning="estado == 'pendiente'"
+           decoration-danger="estado == 'rechazado'"/>
+
+statusbar   --> Barra de progreso de estados (en la cabecera del form).
+    <field name="state" widget="statusbar"
+           statusbar_visible="borrador,confirmado,facturado,pagado"/>
+
+radio       --> Muestra las opciones como botones de radio.
+    <field name="tipo" widget="radio"/>
+
+select      --> Widget por defecto para Selection (dropdown).
+    <field name="estado" widget="select"/>
+
+----------------------------------------
+4. WIDGETS PARA CAMPOS RELACIONALES
+----------------------------------------
+
+many2one_avatar_user --> Muestra avatar del usuario (para res.users).
+    <field name="responsable_id" widget="many2one_avatar_user"/>
+
+many2one_avatar     --> Muestra avatar/imagen del registro relacionado.
+    <field name="partner_id" widget="many2one_avatar"/>
+
+many2many_tags      --> Muestra Many2many como etiquetas (chips).
+    <field name="etiquetas_ids" widget="many2many_tags"/>
+
+many2many_checkboxes --> Muestra Many2many como checkboxes.
+    <field name="permisos_ids" widget="many2many_checkboxes"/>
+
+one2many (lista)    --> Widget por defecto para One2many en formularios.
+    <field name="lineas_ids">
+        <list editable="bottom">
+            <field name="producto_id"/>
+            <field name="cantidad"/>
+        </list>
+    </field>
+
+statusbar_one2many  --> Para historiales de cambio de estado.
+
+----------------------------------------
+5. WIDGETS PARA FECHAS
+----------------------------------------
+
+date        --> Widget por defecto para Date con calendario.
+    <field name="fecha" widget="date"/>
+
+datetime    --> Widget por defecto para Datetime con calendario y hora.
+    <field name="fecha_hora" widget="datetime"/>
+
+remaining_days --> Muestra dias restantes con color segun urgencia.
+    <field name="fecha_vencimiento" widget="remaining_days"/>
+
+daterange   --> Selector de rango de fechas (fecha inicio - fin).
+    <field name="fecha_inicio" widget="daterange"
+           options="{'end_date_field': 'fecha_fin'}"/>
+
+----------------------------------------
+6. WIDGETS PARA ARCHIVOS E IMAGENES
+----------------------------------------
+
+image       --> Muestra campo Image como imagen con opcion de subir.
+    <field name="foto" widget="image" class="oe_avatar"/>
+
+binary_size --> Muestra el tamano del archivo binario.
+    <field name="documento_size" widget="binary_size"/>
+
+pdf_viewer  --> Muestra un PDF embebido en el formulario.
+    <field name="documento_pdf" widget="pdf_viewer"/>
+
+signature   --> Campo para capturar firma digital.
+    <field name="firma" widget="signature"/>
+
+----------------------------------------
+7. WIDGETS ESPECIALES DE KANBAN
+----------------------------------------
+
+kanban_state --> Semaforo de estado kanban (verde/naranja/rojo).
+    <field name="kanban_state" widget="kanban_state_selection"/>
+
+color       --> Selector de color para la tarjeta kanban.
+    <field name="color" widget="color_picker"/>
+
+----------------------------------------
+8. OPCIONES DE WIDGETS (atributo options)
+----------------------------------------
+Proposito: Configurar el comportamiento del widget con un JSON.
+
+EJEMPLO - Many2one con quick_create desactivado:
+    <field name="partner_id"
+           widget="many2one"
+           options="{'no_quick_create': True, 'no_create': True}"/>
+
+EJEMPLO - Many2many tags con color:
+    <field name="etiquetas_ids"
+           widget="many2many_tags"
+           options="{'color_field': 'color'}"/>
+
+EJEMPLO - Progressbar con campo max dinamico:
+    <field name="tareas_completadas"
+           widget="progressbar"
+           options="{'max_value': 'total_tareas', 'editable': False}"/>
+
+OPCIONES COMUNES EN MANY2ONE:
+  no_quick_create    --> No muestra "Crear X" en el dropdown.
+  no_create          --> No muestra ninguna opcion de crear.
+  no_open            --> No muestra el icono de abrir el registro.
+  always_reload      --> Recarga siempre las opciones.
+
+----------------------------------------
+ERRORES COMUNES
+----------------------------------------
+[X] El widget "badge" no colorea segun la condicion
+    Causa:    decoration-success/warning/danger necesita que el campo
+              referenciado en la condicion este declarado en la vista.
+    Solucion: Agregar el campo de estado si no esta, aunque sea invisible.
+
+[X] Widget "image" no muestra la imagen subida
+    Causa:    El campo es Binary en lugar de Image, o falta attachment=True.
+    Solucion: Cambiar a fields.Image en el modelo Python.
+
+[X] Widget "monetary" no muestra la moneda correcta
+    Causa:    Falta el campo currency_id en el modelo o en la vista.
+    Solucion: Agregar currency_id al modelo y al options del widget:
+              options="{'currency_field': 'currency_id'}"
+
+[X] Widget "statusbar" muestra todos los estados incluyendo cancelado
+    Causa:    Falta el atributo statusbar_visible con los estados del flujo principal.
+    Solucion: Agregar statusbar_visible="estado1,estado2,estado3"
+              para mostrar solo los del flujo principal.
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. PHONE Y EMAIL EN FORMULARIOS: Siempre usa widget="phone" y widget="email"
+   para campos de contacto. Permiten llamar/escribir con un clic.
+
+2. BADGE EN LISTAS: En vistas lista, usa widget="badge" en campos de estado
+   para diferenciar visualmente los registros de un vistazo.
+
+3. MANY2ONE_AVATAR_USER: Para campos que apuntan a res.users (responsable,
+   vendedor, doctor), usa este widget. Muestra el avatar del usuario.
+
+4. NO_CREATE EN MANY2ONE: Para Many2one a modelos de configuracion
+   (categorias, tipos, etc.) usa options="{'no_quick_create': True}"
+   para evitar que usuarios creen registros incorrectos desde el campo.
+
+5. STATUSBAR_VISIBLE: Siempre filtra los estados del statusbar del form.
+   Mostrar 'cancelado' junto a los estados normales confunde al usuario.
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-views.txt       --> Donde se usan los widgets en XML
+  notas-fields.txt      --> Tipos de campos asociados a cada widget
+  notas-owl-framework.txt --> Crear widgets personalizados con OWL
+
+========================================

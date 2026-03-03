@@ -1,0 +1,242 @@
+========================================
+  GUIA: ASSETS - BUNDLES JS Y CSS
+========================================
+  SECCION : 06_Frontend_y_Web
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-assets.txt
+========================================
+
+----------------------------------------
+DESCRIPCION TECNICA
+----------------------------------------
+El sistema de assets de Odoo gestiona como se empaquetan y sirven
+los archivos JS, CSS, XML (OWL) y SCSS al navegador.
+Desde Odoo 17, todos los assets se declaran en el __manifest__.py
+bajo la clave 'assets', organizados en "bundles" segun donde deben
+cargarse (backend, frontend, o ambos).
+
+----------------------------------------
+1. BUNDLES PRINCIPALES
+----------------------------------------
+Proposito: Elegir el bundle correcto segun donde corre el codigo.
+
+web.assets_backend
+  --> Todo lo que corre en el backend de Odoo (ERP, vistas, formularios).
+  --> Es el bundle mas usado en desarrollo de modulos.
+
+web.assets_frontend
+  --> Para el portal del cliente y el sitio web de Odoo.
+  --> Se carga en /web/login, /my, /shop, etc.
+
+web.assets_common
+  --> Se carga en AMBOS entornos (backend y frontend).
+  --> Usar solo para utilidades verdaderamente compartidas.
+
+web.assets_qweb
+  --> Solo para plantillas QWeb de reportes.
+  --> Normalmente no se usa directamente; Odoo lo gestiona solo.
+
+point_of_sale.assets
+  --> Para el modulo de Punto de Venta (POS).
+
+----------------------------------------
+2. DECLARACION EN EL MANIFEST
+----------------------------------------
+Proposito: Registrar correctamente los archivos en el bundle.
+
+ESTRUCTURA BASICA:
+    'assets': {
+        'web.assets_backend': [
+            # Archivos JS de componentes OWL
+            'mi_modulo/static/src/components/MiWidget/MiWidget.js',
+            # Plantillas XML de componentes OWL
+            'mi_modulo/static/src/components/MiWidget/MiWidget.xml',
+            # Estilos SCSS o CSS
+            'mi_modulo/static/src/css/mi_estilo.css',
+        ],
+        'web.assets_frontend': [
+            'mi_modulo/static/src/portal/portal.js',
+            'mi_modulo/static/src/portal/portal.css',
+        ],
+    },
+
+USANDO GLOB (para incluir carpetas enteras):
+    'assets': {
+        'web.assets_backend': [
+            'mi_modulo/static/src/**/*',  # Todo el contenido de src
+        ],
+    },
+
+ADVERTENCIA con glob: Incluye TODOS los archivos de la carpeta,
+incluyendo archivos de pruebas o temporales. Usar con cuidado.
+
+----------------------------------------
+3. OPERACIONES AVANZADAS EN BUNDLES
+----------------------------------------
+Proposito: Control fino sobre como y donde se insertan los assets.
+
+AGREGAR AL INICIO DEL BUNDLE (en lugar del final):
+    'assets': {
+        'web.assets_backend': [
+            ('prepend', 'mi_modulo/static/src/css/reset.css'),
+        ],
+    },
+
+INSERTAR ANTES DE UN ARCHIVO ESPECIFICO:
+    'assets': {
+        'web.assets_backend': [
+            ('before', 'web/static/src/css/base.css',
+             'mi_modulo/static/src/css/mi_override.css'),
+        ],
+    },
+
+INSERTAR DESPUES DE UN ARCHIVO ESPECIFICO:
+    'assets': {
+        'web.assets_backend': [
+            ('after', 'web/static/src/core/utils/hooks.js',
+             'mi_modulo/static/src/js/mi_extension.js'),
+        ],
+    },
+
+REEMPLAZAR UN ARCHIVO DEL CORE:
+    'assets': {
+        'web.assets_backend': [
+            ('replace', 'web/static/src/legacy/archivo.js',
+             'mi_modulo/static/src/js/mi_reemplazo.js'),
+        ],
+    },
+
+ELIMINAR UN ARCHIVO DEL BUNDLE:
+    'assets': {
+        'web.assets_backend': [
+            ('remove', 'web/static/src/legacy/archivo_innecesario.js'),
+        ],
+    },
+
+NOTA: 'replace' y 'remove' son operaciones de alto riesgo.
+Pueden romper funcionalidad en actualizaciones de Odoo.
+
+----------------------------------------
+4. ESTRUCTURA DE CARPETAS RECOMENDADA
+----------------------------------------
+Proposito: Organizar los archivos estaticos de forma estandar.
+
+mi_modulo/
+  static/
+    description/
+      icon.png            --> Icono del modulo (256x256 px)
+      index.html          --> Descripcion HTML del modulo
+    src/
+      components/         --> Componentes OWL
+        MiWidget/
+          MiWidget.js
+          MiWidget.xml
+          MiWidget.scss
+      css/                --> Estilos globales del modulo
+        mi_modulo.css
+      img/                --> Imagenes usadas en el frontend
+        logo.png
+      js/                 --> Scripts JS no-OWL (legacy o utilitarios)
+        utils.js
+
+----------------------------------------
+5. SCSS EN ODOO 18
+----------------------------------------
+Proposito: Usar SCSS (Sass) en lugar de CSS puro.
+
+Odoo 18 compila SCSS automaticamente si el archivo tiene extension .scss.
+No necesitas configuracion adicional.
+
+EJEMPLO MiWidget.scss:
+    .mi-widget {
+        padding: 16px;
+        border: 1px solid $odoo-color-primary;  // Variable de Odoo
+
+        &__titulo {
+            font-weight: bold;
+            color: $headings-color;
+        }
+
+        &:hover {
+            background-color: lighten($odoo-color-primary, 40%);
+        }
+    }
+
+VARIABLES SCSS UTILES DE ODOO:
+  $odoo-color-primary    --> Color primario de la marca (morado por defecto)
+  $headings-color        --> Color de los titulos
+  $body-bg               --> Color de fondo
+  $border-color          --> Color de bordes
+  (Todas heredadas de Bootstrap 5 + overrides de Odoo)
+
+----------------------------------------
+6. DEPURACION DE ASSETS
+----------------------------------------
+Proposito: Verificar que los assets cargan correctamente.
+
+MODO DEBUG DE ASSETS (reconstruye bundles):
+  URL: http://localhost:8069/web?debug=assets
+
+LIMPIAR CACHE DE ASSETS DESDE MENU:
+  Configuracion --> Tecnico --> Interfaz de usuario --> Assets del cliente
+  Borrar todos los registros y recargar.
+
+DESDE LA TERMINAL (forma mas directa):
+  python odoo-bin -u mi_modulo -d mi_db
+
+----------------------------------------
+ERRORES COMUNES
+----------------------------------------
+[X] JS/CSS no carga despues de agregar al manifest
+    Causa:    El servidor no ha reconstruido el bundle.
+    Solucion: Reiniciar Odoo o acceder con ?debug=assets en la URL.
+
+[X] "Cannot find module" en JS
+    Causa:    El archivo JS no fue agregado al manifest.
+    Solucion: Verificar que la ruta en 'assets' sea exacta y el
+              archivo exista fisicamente.
+
+[X] Los estilos no aplican o se sobreescriben
+    Causa:    El archivo CSS carga despues de los estilos del core.
+    Solucion: Usar ('prepend', ...) o ('before', ...) en el manifest.
+
+[X] Icono del modulo no aparece
+    Causa:    El icono no esta en static/description/icon.png
+              o no tiene el tamano correcto (256x256 px).
+    Solucion: Colocar icon.png en la ruta correcta con el tamano adecuado.
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. NUNCA en 'data': Desde Odoo 17+, ningun archivo JS, CSS o XML
+   de OWL va en 'data'. Todo va en 'assets'.
+
+2. BUNDLE CORRECTO: Backend = web.assets_backend.
+   Portal/Web = web.assets_frontend. Nunca los mezcles.
+
+3. GLOB CON CUIDADO: El patron '**/*' incluye todo, incluso archivos
+   no deseados. Preferir rutas explicitas en modulos pequenos.
+
+4. SCSS > CSS: Usa .scss en lugar de .css para aprovechar las
+   variables y mixins de Bootstrap/Odoo ya disponibles.
+
+5. DEBUG ASSETS: Ante cualquier problema de JS/CSS, lo primero
+   es probar con ?debug=assets en la URL.
+
+----------------------------------------
+CUANDO USAR CADA BUNDLE
+----------------------------------------
+  Componente OWL en formulario/lista?    --> web.assets_backend
+  Estilo para pagina del portal?         --> web.assets_frontend
+  Libreria JS compartida (utils)?        --> web.assets_common
+  Widget para el POS?                    --> point_of_sale.assets
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-owl-framework.txt --> Como crear los componentes JS/OWL
+  notas-manifest.txt      --> Donde se declara la clave 'assets'
+  notas-qweb.txt          --> Plantillas de reportes (no van en assets)
+  notas-controllers.txt   --> Servir archivos estaticos desde Python
+
+========================================

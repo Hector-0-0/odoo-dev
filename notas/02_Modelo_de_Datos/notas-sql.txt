@@ -1,80 +1,206 @@
 ========================================
-     GUÍA MAESTRA: SQL Y CONSTRAINTS
+  GUIA: CONSTRAINTS SQL Y CONSULTAS CRUDAS
+========================================
+  SECCION : 02_Modelo_de_Datos
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-sql.txt
 ========================================
 
 ----------------------------------------
-DESCRIPCIÓN TÉCNICA
+DESCRIPCION TECNICA
 ----------------------------------------
-Odoo permite interactuar con PostgreSQL de dos formas: mediante 
-restricciones de integridad (Constraints) y mediante consultas 
-directas (SQL Crudo) cuando el ORM no es suficiente por rendimiento.
+Aunque el ORM de Odoo abstrae la mayoria de operaciones SQL, hay
+casos donde se necesita interactuar directamente con PostgreSQL:
+para definir constraints a nivel de BD (mas eficientes que las
+validaciones Python), o para ejecutar consultas que el ORM no
+puede expresar eficientemente.
 
 ----------------------------------------
-1. SQL CONSTRAINTS (_sql_constraints)
+1. _sql_constraints - RESTRICCIONES EN BD
 ----------------------------------------
-Son reglas de integridad ejecutadas por la base de datos. Son más 
-rápidas y seguras que las validaciones en Python.
+Proposito: Definir restricciones de integridad directamente en PostgreSQL.
+           Son mas eficientes que las validaciones @api.constrains
+           porque la BD las verifica sin pasar por Python.
 
 SINTAXIS:
-_sql_constraints = [
-    ('name_uniq', 'unique(name)', '¡El nombre ya existe!'),
-    ('positive_price', 'CHECK(price > 0)', 'El precio debe ser positivo')
-]
+    _sql_constraints = [
+        (
+            'nombre_constraint',     --> Nombre interno (snake_case)
+            'EXPRESION SQL',         --> La restriccion en SQL puro
+            'Mensaje de error visible al usuario'
+        ),
+    ]
 
-Componentes:
-- Nombre: Identificador único de la restricción en la DB.
-- Definición: Sintaxis SQL (unique, check).
-- Mensaje: Error que verá el usuario si se viola la regla.
+TIPOS MAS USADOS:
 
-----------------------------------------
-2. PYTHON CONSTRAINTS (@api.constrains)
-----------------------------------------
-Se usan cuando la validación depende de lógica compleja o campos 
-relacionables que SQL no puede ver fácilmente.
+UNIQUE (unicidad de campo):
+    _sql_constraints = [
+        ('codigo_unico', 'UNIQUE(codigo)', 'El codigo ya existe. Debe ser unico.'),
+    ]
 
-SINTAXIS:
-@api.constrains('age')
-def _check_age(self):
-    for record in self:
-        if record.age < 18:
-            raise ValidationError("El paciente debe ser mayor de edad.")
+UNIQUE MULTI-CAMPO (combinacion unica):
+    _sql_constraints = [
+        ('producto_almacen_unico',
+         'UNIQUE(product_id, warehouse_id)',
+         'Ya existe stock de este producto en ese almacen.'),
+    ]
 
-----------------------------------------
-3. SQL CRUDO (EJECUCIÓN DIRECTA)
-----------------------------------------
-A veces el ORM es lento para reportes masivos. Usamos `self.env.cr`.
+CHECK (validacion de valor):
+    _sql_constraints = [
+        ('precio_positivo',
+         'CHECK(precio >= 0)',
+         'El precio no puede ser negativo.'),
+        ('porcentaje_valido',
+         'CHECK(porcentaje BETWEEN 0 AND 100)',
+         'El porcentaje debe estar entre 0 y 100.'),
+    ]
 
-SINTAXIS:
-query = "SELECT name FROM res_partner WHERE customer_rank > %s"
-self.env.cr.execute(query, (10,))
-res = self.env.cr.dictfetchall()  --> Devuelve lista de diccionarios
-
-----------------------------------------
-REGLAS DE ORO DEL EXPERTO
-----------------------------------------
-1. SQL ANTES QUE PYTHON: Si puedes validar algo con un _sql_constraint 
-   (como un nombre único), HAZLO. Es imposible de saltar, incluso
-   importando datos masivamente o vía API.
-
-2. SEGURIDAD SQL: NUNCA uses f-strings o concatenación en SQL crudo.
-   - Mal: cr.execute("SELECT * FROM table WHERE id = " + user_id)
-   - Bien: cr.execute("SELECT * FROM table WHERE id = %s", (user_id,))
-   Esto evita ataques de Inyección SQL.
-
-3. INVALIDACIÓN DE CACHÉ: Si usas SQL crudo para MODIFICAR datos 
-   (UPDATE/INSERT), debes invalidar la caché del ORM:
-   self.env.cache.invalidate()
-
-4. CAMPO UNIQUE MULTIPLE: Puedes hacer combinaciones únicas:
-   unique(partner_id, date) --> Evita duplicados para el mismo 
-   cliente en la misma fecha.
+COMBINADOS (varios constraints):
+    _sql_constraints = [
+        ('ref_unica', 'UNIQUE(referencia)', 'La referencia ya existe.'),
+        ('cantidad_positiva', 'CHECK(cantidad > 0)', 'La cantidad debe ser mayor a 0.'),
+    ]
 
 ----------------------------------------
-LIMITACIONES
+2. @api.constrains - VALIDACIONES EN PYTHON
 ----------------------------------------
-- Las _sql_constraints NO funcionan en campos computados no 
-  almacenados (store=False).
-- SQL crudo se salta las reglas de seguridad (ir.rule) y los 
-  métodos create/write heredados. Úsalo con extrema precaución.
+Proposito: Validaciones mas complejas que no se pueden expresar en SQL.
+           Se ejecutan DESPUES de guardar en BD (dentro de la transaccion).
+
+EJEMPLO:
+    from odoo.exceptions import ValidationError
+
+    @api.constrains('fecha_inicio', 'fecha_fin')
+    def _check_fechas(self):
+        for record in self:
+            if record.fecha_fin and record.fecha_inicio:
+                if record.fecha_fin < record.fecha_inicio:
+                    raise ValidationError(
+                        'La fecha de fin no puede ser anterior a la de inicio.'
+                    )
+
+CUANDO USAR CADA UNO:
+  _sql_constraints --> Unicidad, rangos simples, checks de columna.
+                       MAS EFICIENTE. Lo verifica la BD directamente.
+  @api.constrains  --> Logica compleja, comparacion entre campos,
+                       validaciones que requieren consultar otros modelos.
+
+----------------------------------------
+3. CONSULTAS SQL CRUDAS CON self.env.cr
+----------------------------------------
+Proposito: Ejecutar SQL directamente cuando el ORM no es suficiente.
+           Casos: consultas de rendimiento critico, reportes complejos,
+           actualizaciones masivas, funciones SQL especificas de PostgreSQL.
+
+CURSOR DE BASE DE DATOS:
+    self.env.cr   --> Cursor activo de la transaccion actual.
+
+EXECUTE (consulta sin retorno / INSERT / UPDATE):
+    self.env.cr.execute(
+        "UPDATE mi_tabla SET campo = %s WHERE id = %s",
+        (nuevo_valor, record_id)
+    )
+
+FETCHALL (obtener todos los resultados):
+    self.env.cr.execute(
+        "SELECT id, name FROM res_partner WHERE customer_rank > %s",
+        (0,)
+    )
+    resultados = self.env.cr.fetchall()
+    # resultados = [(1, 'Cliente A'), (2, 'Cliente B'), ...]
+
+FETCHONE (obtener un solo resultado):
+    self.env.cr.execute(
+        "SELECT COUNT(*) FROM sale_order WHERE state = %s",
+        ('sale',)
+    )
+    total = self.env.cr.fetchone()[0]
+
+DICTFETCHALL (resultado como lista de diccionarios):
+    self.env.cr.execute("SELECT id, name, email FROM res_partner LIMIT 10")
+    resultados = self.env.cr.dictfetchall()
+    # resultados = [{'id': 1, 'name': 'X', 'email': 'x@x.com'}, ...]
+
+----------------------------------------
+4. BUENAS PRACTICAS EN SQL CRUDO
+----------------------------------------
+
+SIEMPRE USA PARAMETROS (%s), NUNCA FORMATEES STRINGS:
+    CORRECTO:
+        self.env.cr.execute("SELECT * FROM res_partner WHERE name = %s", (nombre,))
+
+    INCORRECTO (VULNERABLE A SQL INJECTION):
+        self.env.cr.execute("SELECT * FROM res_partner WHERE name = '%s'" % nombre)
+
+NOMBRE DE TABLAS EN ODOO:
+    El nombre de tabla = _name con puntos reemplazados por guiones bajos.
+    'res.partner'     --> tabla: res_partner
+    'sale.order'      --> tabla: sale_order
+    'hospital.patient'--> tabla: hospital_patient
+
+CUANDO USAR SQL CRUDO (con criterio):
+  OK  Reportes con JOINs complejos de 5+ tablas.
+  OK  Actualizaciones masivas de millones de registros.
+  OK  Funciones PostgreSQL especificas (array_agg, json_build_object, etc.).
+  MAL Para operaciones simples que el ORM maneja bien.
+  MAL Para logica de negocio que debe pasar por el ORM (validaciones, etc.).
+
+----------------------------------------
+5. INVALIDAR CACHE TRAS SQL CRUDO
+----------------------------------------
+Proposito: El ORM de Odoo cachea registros. Tras modificar datos con
+SQL crudo, la cache puede quedar desactualizada.
+
+SOLUCION:
+    self.env.cr.execute("UPDATE mi_tabla SET campo = %s WHERE id IN %s",
+                        (valor, tuple(ids)))
+    self.invalidate_model()        --> Invalida cache del modelo actual
+    # o
+    self.env['mi.modelo'].invalidate_model()
+
+----------------------------------------
+ERRORES COMUNES
+----------------------------------------
+[X] "duplicate key value violates unique constraint"
+    Causa:    Se intento insertar un valor duplicado en un campo UNIQUE.
+    Solucion: Es el comportamiento correcto del constraint. Capturar la
+              excepcion o validar antes de insertar.
+
+[X] El constraint SQL no se aplica tras agregar _sql_constraints
+    Causa:    El modulo no fue actualizado, la BD no tiene el constraint.
+    Solucion: Actualizar con -u nombre_modulo. Si ya hay datos violando
+              el constraint, la actualizacion fallara. Limpiar datos primero.
+
+[X] Los cambios con SQL crudo no se ven hasta recargar
+    Causa:    La cache del ORM no fue invalidada.
+    Solucion: Llamar a self.invalidate_model() tras la consulta SQL.
+
+[X] "psycopg2.ProgrammingError: syntax error"
+    Causa:    Error de sintaxis en el SQL o uso incorrecto de %s.
+    Solucion: Verificar la query. En PostgreSQL los strings van con
+              comillas simples. Los parametros siempre con %s y tupla.
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. NUNCA FORMATEES SQL CON %: Siempre usa parametros (%s con tupla).
+   Formatear strings en SQL es una vulnerabilidad de seguridad critica.
+
+2. SQL CRUDO ES EL ULTIMO RECURSO: Primero intenta resolverlo con el
+   ORM. Solo usa SQL crudo cuando hay un problema real de rendimiento
+   o el ORM no puede expresar la consulta.
+
+3. INVALIDA LA CACHE: Tras modificar datos con SQL crudo, llama
+   a invalidate_model() para que el ORM no use datos viejos.
+
+4. _sql_constraints > @api.constrains: Para validaciones simples
+   (unicidad, rangos), usa _sql_constraints. Es mas rapido y robusto.
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-models.txt      --> Donde se definen los _sql_constraints
+  notas-orm.txt         --> El ORM que se debe preferir sobre SQL crudo
+  notas-performance.txt --> Cuando y como usar SQL para optimizar
 
 ========================================

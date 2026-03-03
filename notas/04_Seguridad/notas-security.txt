@@ -1,75 +1,159 @@
 ========================================
-     GUÍA MAESTRA: SEGURIDAD (ACL)
+  GUIA: CONTROL DE ACCESO (ACL)
+========================================
+  SECCION : 04_Seguridad
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-security.txt
 ========================================
 
 ----------------------------------------
-DESCRIPCIÓN TÉCNICA
+DESCRIPCION TECNICA
 ----------------------------------------
-El archivo ir.model.access.csv define los permisos básicos a nivel 
-de modelo. Determina qué grupos de usuarios pueden Leer, Escribir, 
-Crear o Eliminar registros en una tabla específica.
+El archivo ir.model.access.csv define los permisos de acceso a nivel
+de modelo (tabla completa). Controla si un grupo de usuarios puede
+leer, crear, escribir o eliminar registros de un modelo especifico.
+Sin este archivo, los usuarios no pueden acceder a los modelos del modulo.
 
 ----------------------------------------
-ESTRUCTURA DEL ARCHIVO CSV
+1. ESTRUCTURA DEL ARCHIVO CSV
 ----------------------------------------
-Ubicación obligatoria: security/ir.model.access.csv
+Nombre del archivo: security/ir.model.access.csv
+Ruta en el modulo:  mi_modulo/security/ir.model.access.csv
+Declaracion:        Debe estar primero en la lista 'data' del manifest.
 
-El archivo debe tener exactamente estas 8 columnas:
+COLUMNAS (separadas por coma):
+  id          --> XML ID unico del permiso (snake_case)
+  name        --> Nombre descriptivo del permiso
+  model_id    --> Referencia al modelo: model_nombre_con_guiones
+  group_id    --> Grupo que recibe el permiso (vacio = todos los usuarios)
+  perm_read   --> Permiso de lectura (1=Si, 0=No)
+  perm_write  --> Permiso de escritura (1=Si, 0=No)
+  perm_create --> Permiso de creacion (1=Si, 0=No)
+  perm_unlink --> Permiso de eliminacion (1=Si, 0=No)
+
+FORMATO DEL model_id:
+  El modelo 'hospital.patient' --> 'model_hospital_patient'
+  Los puntos se reemplazan por guiones bajos y se agrega prefijo 'model_'
+
+FORMATO DEL group_id:
+  'modulo.xml_id_del_grupo'
+  Ejemplo: 'base.group_user'        --> Usuario interno (todos)
+           'sales_team.group_sale_salesman' --> Vendedor
+           'account.group_account_manager' --> Gerente contable
+
+----------------------------------------
+2. EJEMPLO COMPLETO DEL CSV
+----------------------------------------
+
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_hospital_patient_user,hospital.patient user,model_hospital_patient,base.group_user,1,1,1,0
+access_hospital_patient_manager,hospital.patient manager,model_hospital_patient,base.group_system,1,1,1,1
+access_hospital_appointment_user,hospital.appointment user,model_hospital_appointment,base.group_user,1,1,1,0
 
-1. id: Identificador único del permiso (Ej: access_hospital_paciente).
-2. name: Nombre descriptivo (Ej: hospital.paciente.res.user).
-3. model_id:id: ID del modelo con prefijo 'model_'. 
-   (Ej: model_hospital_paciente).
-4. group_id:id: ID del grupo que recibe el permiso. 
-   Si se deja vacío, aplica para TODOS los usuarios.
-5. perm_read: 1 para permitir lectura, 0 para denegar.
-6. perm_write: 1 para permitir edición, 0 para denegar.
-7. perm_create: 1 para permitir creación, 0 para denegar.
-8. perm_unlink: 1 para permitir eliminación, 0 para denegar.
+INTERPRETACION:
+  Linea 1: Usuarios internos pueden leer/crear/escribir pacientes, NO eliminar.
+  Linea 2: Administradores tienen acceso total a pacientes.
+  Linea 3: Usuarios internos pueden leer/crear/escribir citas, NO eliminar.
 
 ----------------------------------------
-DEFINICIÓN DE GRUPOS (XML)
+3. GRUPOS DE USUARIOS EN ODOO
 ----------------------------------------
-Antes de usarlos en el CSV, los grupos suelen definirse en un XML.
+Proposito: Definir grupos propios para controlar acceso granular.
 
-SINTAXIS:
-<record id="group_hospital_manager" model="res.groups">
-    <field name="name">Manager de Hospital</field>
-    <field name="category_id" ref="base.module_category_services_hospital"/>
-    <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
-</record>
+DEFINICION EN XML (security/security.xml o groups.xml):
+    <record id="group_hospital_user" model="res.groups">
+        <field name="name">Usuario Hospital</field>
+        <field name="category_id" ref="base.module_category_hidden"/>
+        <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+
+    <record id="group_hospital_manager" model="res.groups">
+        <field name="name">Gerente Hospital</field>
+        <field name="category_id" ref="base.module_category_hidden"/>
+        <field name="implied_ids" eval="[(4, ref('group_hospital_user'))]"/>
+    </record>
+
+USO EN EL CSV:
+  group_id:id = mi_modulo.group_hospital_user
+  group_id:id = mi_modulo.group_hospital_manager
+
+GRUPOS BASE MAS USADOS DE ODOO:
+  base.group_user            --> Todo usuario interno (base)
+  base.group_system          --> Administrador tecnico
+  base.group_portal          --> Usuario portal (clientes externos)
+  base.group_public          --> Usuario publico (sin login)
+  sales_team.group_sale_salesman  --> Vendedor
+  sales_team.group_sale_manager   --> Gerente de ventas
+  account.group_account_user      --> Contable
+  account.group_account_manager   --> Gerente contable
 
 ----------------------------------------
-REGLAS DE ORO DEL EXPERTO
+4. VERIFICAR PERMISOS EN CODIGO
 ----------------------------------------
-1. EL PREFIJO 'model_': En el CSV, Odoo busca el modelo internamente. 
-   Si tu modelo es 'hospital.paciente', en el CSV debes escribir 
-   'model_hospital_paciente' (cambiando puntos por guiones bajos).
 
-2. ORDEN DE CARGA: El archivo CSV debe estar declarado en el 
-   __manifest__.py dentro de la sección 'data', y SIEMPRE debe ir 
-   antes de los archivos de vistas XML.
+Verificar si el usuario tiene un grupo:
+    self.env.user.has_group('mi_modulo.group_hospital_manager')
+    # Retorna True o False
 
-3. HERENCIA DE GRUPOS: Usa 'implied_ids' para que un grupo herede 
-   permisos de otro. Ej: Un Manager debe heredar los permisos del 
-   usuario básico (base.group_user).
+Restringir campo a un grupo (en Python):
+    campo_sensible = fields.Float(groups='mi_modulo.group_hospital_manager')
 
-4. PERM_UNLINK: Sé extremadamente tacaño con el permiso de borrado. 
-   En ERPs profesionales, es mejor desactivar (active=False) que borrar.
+Restringir campo en XML (vista):
+    <field name="salario" groups="hr.group_hr_manager"/>
+
+Lanzar error de acceso manualmente:
+    from odoo.exceptions import AccessError
+    if not self.env.user.has_group('mi_modulo.group_hospital_manager'):
+        raise AccessError('No tiene permisos para realizar esta accion.')
 
 ----------------------------------------
-ERRORES COMUNES (DEBUGGING)
+ERRORES COMUNES
 ----------------------------------------
-- "Warning: You are not allowed to access 'model.name'":
-  Causa: Falta la línea correspondiente en el CSV para el usuario actual.
+[X] "You are not allowed to access 'X'" al abrir un modelo
+    Causa:    Falta la linea de permiso en ir.model.access.csv para ese modelo
+              y el grupo del usuario actual.
+    Solucion: Agregar la linea correspondiente en el CSV y actualizar el modulo.
 
-- El módulo no carga o da error de "External ID not found":
-  Causa: No pusiste 'model_' antes del nombre del modelo en el CSV o 
-  el archivo no está en el manifest.
+[X] El CSV se carga pero los permisos no aplican
+    Causa:    El modelo en model_id:id no coincide exactamente con el nombre
+              del modelo (typo o falta el prefijo 'model_').
+    Solucion: Verificar: 'hospital.patient' --> 'model_hospital_patient'
 
-- Los usuarios ven el menú pero no los datos:
-  Causa: Tienen perm_read en 0 o hay una 'ir.rule' (Regla de Registro) 
-  restringiendo el acceso.
+[X] "ir.model.access.csv" da error al instalar el modulo
+    Causa:    El archivo tiene problemas de formato (espacios, comas extra,
+              salto de linea incorrecto) o el group_id no existe.
+    Solucion: Verificar que el CSV no tenga espacios antes/despues de las comas
+              y que todos los grupos referenciados esten instalados.
+
+[X] El acceso sin grupo (linea vacia en group_id) no funciona
+    Causa:    Una linea sin grupo aplica a TODOS los usuarios incluyendo portal.
+              Si el modulo usa multi-compania o portal, puede generar conflictos.
+    Solucion: Usar 'base.group_user' en lugar de vacio para limitar a usuarios internos.
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. PRIMERO EN DATA: security/ir.model.access.csv siempre es el
+   primer archivo en la lista 'data' del manifest.
+
+2. UN PERMISO POR GRUPO: Crea una linea por modelo por grupo.
+   No mezcles permisos de distintos grupos en una sola linea.
+
+3. PRINCIPIO DE MINIMO PRIVILEGIO: Da solo los permisos necesarios.
+   Si los usuarios no necesitan eliminar, pon perm_unlink=0.
+
+4. ID UNICO: El campo 'id' de cada linea debe ser unico en todo
+   el sistema. Usa el patron: 'access_modelo_grupo'.
+
+5. GRUPOS PROPIOS PARA MODULOS COMPLEJOS: Si tu modulo tiene roles
+   distintos (usuario, supervisor, gerente), define tus propios grupos
+   en lugar de reutilizar los de Odoo. Mas flexible y mantenible.
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-rules.txt                --> Record rules: permisos a nivel de registro
+  notas-permissions-avanzado.txt --> Permisos en vistas, campos y menus
+  notas-manifest.txt             --> Declarar el CSV en 'data'
 
 ========================================

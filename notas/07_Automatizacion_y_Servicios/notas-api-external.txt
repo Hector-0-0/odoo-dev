@@ -1,0 +1,268 @@
+========================================
+  GUIA: API EXTERNA - XML-RPC Y REST
+========================================
+  SECCION : 07_Automatizacion_y_Servicios
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-api-external.txt
+========================================
+
+----------------------------------------
+DESCRIPCION TECNICA
+----------------------------------------
+Odoo expone dos mecanismos para ser consumido desde aplicaciones
+externas (apps moviles, otros ERPs, scripts de integracion):
+  XML-RPC: El protocolo nativo de Odoo. Estable, documentado
+           oficialmente. Disponible en todas las versiones.
+  JSON-RPC: Variante JSON del mismo protocolo. Mas moderno.
+  REST personalizado: Controladores HTTP propios (ver notas-controllers.txt)
+
+Tambien puede CONSUMIR APIs externas usando la libreria requests.
+
+----------------------------------------
+1. CONSUMIR ODOO DESDE PYTHON (XML-RPC)
+----------------------------------------
+Proposito: Conectarse a Odoo desde un script externo o integracion.
+
+    import xmlrpc.client
+
+    # --- CONFIGURACION ---
+    url      = 'https://mi-empresa.odoo.com'
+    db       = 'mi_base_de_datos'
+    username = 'admin@empresa.com'
+    password = 'mi_api_key'           # Usar API Key, no contrasena
+
+    # --- AUTENTICACION ---
+    common = xmlrpc.client.ServerProxy(f'{url}/xmlrpc/2/common')
+    uid = common.authenticate(db, username, password, {})
+    print(f"UID del usuario: {uid}")  # Si es 0, las credenciales son incorrectas
+
+    # --- CLIENTE ORM ---
+    models = xmlrpc.client.ServerProxy(f'{url}/xmlrpc/2/object')
+
+    # --- OPERACIONES CRUD ---
+
+    # READ: Buscar y leer registros
+    clientes = models.execute_kw(
+        db, uid, password,
+        'res.partner', 'search_read',
+        [[['is_company', '=', True]]],
+        {'fields': ['name', 'email', 'phone'], 'limit': 10}
+    )
+
+    # CREATE: Crear un registro
+    nuevo_id = models.execute_kw(
+        db, uid, password,
+        'res.partner', 'create',
+        [{'name': 'Nueva Empresa', 'is_company': True, 'email': 'info@nueva.com'}]
+    )
+
+    # WRITE: Actualizar un registro
+    models.execute_kw(
+        db, uid, password,
+        'res.partner', 'write',
+        [[nuevo_id], {'phone': '+51 999 888 777'}]
+    )
+
+    # UNLINK: Eliminar un registro
+    models.execute_kw(
+        db, uid, password,
+        'res.partner', 'unlink',
+        [[nuevo_id]]
+    )
+
+GENERAR API KEY EN ODOO:
+  Mi perfil --> Seguridad de la cuenta --> Claves API --> Nueva clave
+  Usar la API Key en lugar de la contrasena: mas seguro y revocable.
+
+----------------------------------------
+2. CONSUMIR ODOO DESDE JAVASCRIPT (JSON-RPC)
+----------------------------------------
+Proposito: Conectarse a Odoo desde una aplicacion web externa.
+
+    const url = 'https://mi-empresa.odoo.com';
+
+    async function callOdoo(model, method, args, kwargs = {}) {
+        const response = await fetch(`${url}/web/dataset/call_kw`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',  // Para enviar cookies de sesion
+            body: JSON.stringify({
+                jsonrpc: '2.0',
+                method: 'call',
+                params: {
+                    model,
+                    method,
+                    args,
+                    kwargs,
+                }
+            })
+        });
+        const data = await response.json();
+        if (data.error) throw new Error(data.error.data.message);
+        return data.result;
+    }
+
+    // Uso:
+    const clientes = await callOdoo(
+        'res.partner',
+        'search_read',
+        [[['is_company', '=', true]]],
+        { fields: ['name', 'email'], limit: 5 }
+    );
+
+----------------------------------------
+3. ODOO CONSUME UNA API EXTERNA
+----------------------------------------
+Proposito: Llamar a una API de terceros desde un metodo Python de Odoo.
+
+    import requests
+    import logging
+    from odoo import models, api
+
+    _logger = logging.getLogger(__name__)
+
+    class MiIntegracion(models.Model):
+        _inherit = 'sale.order'
+
+        @api.model
+        def sincronizar_con_api_externa(self):
+            # Obtener credenciales desde parametros del sistema
+            api_url = self.env['ir.config_parameter'].sudo().get_param(
+                'mi_modulo.api_externa_url'
+            )
+            api_key = self.env['ir.config_parameter'].sudo().get_param(
+                'mi_modulo.api_externa_key'
+            )
+
+            headers = {
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json',
+            }
+
+            try:
+                response = requests.get(
+                    f'{api_url}/api/v1/productos',
+                    headers=headers,
+                    timeout=10          # Siempre definir timeout
+                )
+                response.raise_for_status()  # Lanza excepcion si status >= 400
+                datos = response.json()
+
+                for item in datos.get('productos', []):
+                    self._procesar_producto_externo(item)
+
+                _logger.info(
+                    "Sincronizacion API externa: %d productos procesados.",
+                    len(datos.get('productos', []))
+                )
+
+            except requests.Timeout:
+                _logger.error("API externa: timeout despues de 10 segundos.")
+            except requests.HTTPError as e:
+                _logger.error("API externa HTTP error: %s", str(e))
+            except Exception as e:
+                _logger.error("API externa error inesperado: %s", str(e))
+
+        def _procesar_producto_externo(self, item):
+            producto = self.env['product.product'].search([
+                ('default_code', '=', item.get('sku'))
+            ], limit=1)
+
+            if producto:
+                producto.write({'list_price': item.get('precio')})
+            else:
+                self.env['product.product'].create({
+                    'name': item.get('nombre'),
+                    'default_code': item.get('sku'),
+                    'list_price': item.get('precio'),
+                })
+
+----------------------------------------
+4. AUTENTICACION CON SESION (para scripts internos)
+----------------------------------------
+Proposito: Autenticarse con sesion en lugar de XML-RPC.
+
+    import requests
+
+    session = requests.Session()
+
+    # Login
+    session.post('https://mi-empresa.odoo.com/web/session/authenticate', json={
+        'jsonrpc': '2.0',
+        'method': 'call',
+        'params': {
+            'db': 'mi_db',
+            'login': 'admin@empresa.com',
+            'password': 'mi_pass',
+        }
+    })
+
+    # Llamada autenticada
+    result = session.post('https://mi-empresa.odoo.com/web/dataset/call_kw', json={
+        'jsonrpc': '2.0',
+        'method': 'call',
+        'params': {
+            'model': 'res.partner',
+            'method': 'search_read',
+            'args': [[]],
+            'kwargs': {'fields': ['name'], 'limit': 5},
+        }
+    }).json()
+
+----------------------------------------
+ERRORES COMUNES
+----------------------------------------
+[X] UID = 0 en autenticacion XML-RPC
+    Causa:    Credenciales incorrectas o usuario no tiene acceso a esa DB.
+    Solucion: Verificar email/password/db. Usar API Key en lugar de password.
+
+[X] "Access Denied" en execute_kw
+    Causa:    El usuario no tiene permisos sobre el modelo solicitado.
+    Solucion: Verificar permisos en ir.model.access.csv o usar un
+              usuario con rol adecuado.
+
+[X] Timeout en requests desde Odoo
+    Causa:    La API externa tarda demasiado o no esta disponible.
+    Solucion: Siempre usar timeout= en requests.get/post.
+              Considerar procesamiento asincronico via cron.
+
+[X] SSL Certificate error
+    Causa:    La API externa tiene certificado SSL invalido.
+    Solucion: NUNCA usar verify=False en produccion.
+              Instalar el certificado CA correspondiente en el servidor.
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. API KEY: Siempre usar API Keys de Odoo, nunca la contrasena real
+   del usuario. Las API Keys son revocables individualmente.
+
+2. TIMEOUT: Todo requests.get/post DEBE tener timeout=N.
+   Sin timeout, una API caida puede bloquear el servidor de Odoo.
+
+3. CREDENCIALES EN CONFIG: Guardar URLs y keys de APIs externas
+   en ir.config_parameter, nunca hardcodeadas en el codigo.
+
+4. RAISE_FOR_STATUS: Usar response.raise_for_status() para capturar
+   errores HTTP (4xx, 5xx) automaticamente.
+
+5. LOGS: Todo consumo de API externa debe tener logging de
+   inicio, resultado y errores. Critico para debugging.
+
+----------------------------------------
+CUANDO USAR CADA METODO
+----------------------------------------
+  Script Python externo sincroniza datos?  --> XML-RPC
+  App web externa accede a Odoo?           --> JSON-RPC con sesion
+  Odoo sincroniza con otro sistema?        --> requests en metodo Python
+  Integracion en tiempo real?              --> Webhooks (notas-webhooks.txt)
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-webhooks.txt    --> Integraciones en tiempo real (push vs pull)
+  notas-controllers.txt --> Crear endpoints REST personalizados en Odoo
+  notas-cron.txt        --> Ejecutar sincronizaciones periodicamente
+  notas-security.txt    --> Permisos necesarios para acceso via API
+
+========================================

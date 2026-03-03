@@ -1,0 +1,244 @@
+========================================
+  GUIA: ANALISIS ESTATICO Y LINTERS
+========================================
+  SECCION : 08_Calidad_y_Despliegue
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-static.txt
+========================================
+
+----------------------------------------
+DESCRIPCION TECNICA
+----------------------------------------
+El analisis estatico es el proceso de revisar el codigo fuente
+sin ejecutarlo para detectar errores, malas practicas, y
+problemas de estilo. En el ecosistema Odoo se usan herramientas
+Python estandar (flake8, pylint) combinadas con plugins especificos
+para Odoo que conocen sus patrones y convenciones.
+
+----------------------------------------
+1. HERRAMIENTAS PRINCIPALES
+----------------------------------------
+
+pylint-odoo
+  El linter oficial del ecosistema Odoo.
+  Detecta errores especificos de Odoo: manifests incorrectos,
+  uso incorrecto de la API, problemas de herencia, etc.
+
+  INSTALACION:
+    pip install pylint-odoo
+
+  USO BASICO:
+    pylint --load-plugins pylint_odoo mi_modulo/
+
+flake8
+  Linter de estilo Python (PEP 8).
+  Detecta: lineas muy largas, imports no usados, espacios incorrectos.
+
+  INSTALACION:
+    pip install flake8
+
+  USO:
+    flake8 mi_modulo/ --max-line-length=120
+
+black
+  Formateador automatico de codigo Python.
+  Reformatea el codigo siguiendo un estilo consistente.
+
+  INSTALACION:
+    pip install black
+
+  USO:
+    black mi_modulo/               # Formatea todos los archivos
+    black mi_modulo/ --check       # Solo verifica sin modificar
+
+isort
+  Ordena automaticamente los imports de Python.
+
+  INSTALACION:
+    pip install isort
+
+  USO:
+    isort mi_modulo/               # Ordena imports
+    isort mi_modulo/ --check-only  # Solo verifica
+
+----------------------------------------
+2. CONFIGURACION .pylintrc PARA ODOO
+----------------------------------------
+Proposito: Configurar pylint con las reglas del ecosistema Odoo.
+
+ARCHIVO: .pylintrc (en la raiz del proyecto)
+
+    [MASTER]
+    load-plugins=pylint_odoo
+
+    [ODOO]
+    # Version de Odoo para validaciones especificas
+    odoo_config_check_imports = True
+
+    [FORMAT]
+    max-line-length=120
+
+    [MESSAGES CONTROL]
+    # Deshabilitar advertencias que no aplican al proyecto
+    disable=
+        missing-docstring,
+        too-few-public-methods,
+        too-many-arguments,
+
+    [DESIGN]
+    max-args=8
+    max-attributes=15
+
+----------------------------------------
+3. CONFIGURACION .flake8
+----------------------------------------
+ARCHIVO: .flake8 (en la raiz del proyecto)
+
+    [flake8]
+    max-line-length = 120
+    exclude =
+        .git,
+        __pycache__,
+        *.egg-info,
+        migrations,
+    per-file-ignores =
+        # En tests, las lineas largas son aceptables
+        */tests/*:E501
+
+----------------------------------------
+4. CONFIGURACION pyproject.toml (MODERNO)
+----------------------------------------
+Proposito: Un solo archivo para configurar black, isort y otros.
+
+    [tool.black]
+    line-length = 120
+    target-version = ["py310", "py311"]
+    exclude = '''
+    /(
+        \.git
+      | __pycache__
+      | \.eggs
+    )/
+    '''
+
+    [tool.isort]
+    profile = "black"
+    line_length = 120
+    known_odoo = ["odoo"]
+    known_third_party = ["werkzeug", "psycopg2", "requests"]
+    sections = ["FUTURE","STDLIB","THIRDPARTY","ODOO","FIRSTPARTY","LOCALFOLDER"]
+
+----------------------------------------
+5. PRE-COMMIT HOOKS (AUTOMATIZACION)
+----------------------------------------
+Proposito: Ejecutar los linters automaticamente antes de cada commit.
+
+INSTALACION:
+    pip install pre-commit
+
+ARCHIVO: .pre-commit-config.yaml (en la raiz del proyecto)
+
+    repos:
+      - repo: https://github.com/psf/black
+        rev: 23.12.1
+        hooks:
+          - id: black
+            language_version: python3.11
+
+      - repo: https://github.com/PyCQA/flake8
+        rev: 7.0.0
+        hooks:
+          - id: flake8
+            args: [--max-line-length=120]
+
+      - repo: https://github.com/PyCQA/isort
+        rev: 5.13.2
+        hooks:
+          - id: isort
+
+      - repo: https://github.com/OCA/pylint-odoo
+        rev: v9.2.0
+        hooks:
+          - id: pylint_odoo
+            args: [--limit-complexity=15]
+
+ACTIVAR:
+    pre-commit install    # Instala los hooks en .git/hooks/
+    pre-commit run --all-files  # Ejecutar en todos los archivos ahora
+
+RESULTADO: Antes de cada git commit, se ejecutaran automaticamente
+todos los linters. Si alguno falla, el commit es rechazado.
+
+----------------------------------------
+6. ERRORES COMUNES DE PYLINT-ODOO
+----------------------------------------
+
+W8103: Translation method _() not used
+  Causa:    Strings en el codigo no estan envueltos en _()
+  Solucion: from odoo import _ y usar _('Mi texto')
+
+E8106: Class attribute order
+  Causa:    Los atributos del modelo no estan en el orden esperado
+  Solucion: Orden correcto: _name, _description, _inherit, fields, methods
+
+W8120: Missing return in method
+  Causa:    Un metodo que deberia retornar algo no tiene return explicito
+  Solucion: Agregar return True o el valor correcto
+
+C8101: Missing __manifest__ key
+  Causa:    Falta una clave obligatoria en __manifest__.py
+  Solucion: Verificar que 'name', 'version', 'depends' esten presentes
+
+----------------------------------------
+ERRORES COMUNES DE FLAKE8
+----------------------------------------
+
+E501: Line too long (> 120 characters)
+  Solucion: Dividir la linea en multiples lineas con \
+
+F401: Imported but unused
+  Solucion: Eliminar el import no usado
+
+E302: Expected 2 blank lines
+  Solucion: Agregar 2 lineas en blanco antes de definiciones de clase/funcion
+
+W291: Trailing whitespace
+  Solucion: Configurar el editor para eliminar espacios al final
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. PRE-COMMIT: Configura pre-commit desde el inicio del proyecto.
+   Es mucho mas facil mantener calidad desde el dia 1 que limpiar
+   cientos de errores despues.
+
+2. BLACK ES DEFINITIVO: Si usas black, no discutas sobre estilo
+   de codigo. Black decide y todos siguen. Elimina debates innecesarios.
+
+3. PYLINT-ODOO PRIMERO: Las advertencias de pylint-odoo son especificas
+   de Odoo y mas importantes que las de flake8 generico. Priorizalas.
+
+4. NO SILENCIAR SIN RAZON: Evita # noqa y # pylint: disable a menos
+   que sea absolutamente necesario y documentado con un comentario
+   explicando por que.
+
+5. CI/CD: Integra los linters en tu pipeline de CI para que fallen
+   los merges con codigo que no pasa las verificaciones.
+
+----------------------------------------
+CUANDO USAR CADA HERRAMIENTA
+----------------------------------------
+  Detectar errores especificos de Odoo?  --> pylint-odoo
+  Verificar estilo PEP 8?                --> flake8
+  Formatear codigo automaticamente?      --> black
+  Ordenar imports?                       --> isort
+  Todo automatico antes del commit?      --> pre-commit
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-testing.txt    --> Pruebas de logica (complementa al linting)
+  notas-deployment.txt --> CI/CD donde corren los linters
+  notas-debugging.txt  --> Resolver errores detectados por los linters
+
+========================================

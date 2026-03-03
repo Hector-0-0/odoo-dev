@@ -1,95 +1,204 @@
 ========================================
-    GUÍA MAESTRA: DECORADORES @API
+  GUIA: DECORADORES @api EN ODOO
+========================================
+  SECCION : 03_Logica_de_Negocio_ORM
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-decorators.txt
 ========================================
 
 ----------------------------------------
-DESCRIPCIÓN TÉCNICA
+DESCRIPCION TECNICA
 ----------------------------------------
-Los decoradores de la API definen el comportamiento de los métodos 
-frente a los cambios de datos. En Odoo 17/18, estos decoradores 
-optimizan la comunicación entre el cliente (browser) y el servidor.
+Los decoradores @api de Odoo modifican el comportamiento de los metodos
+de un modelo. Definen cuando se ejecuta un metodo, como reacciona a
+cambios en campos, y que tipo de entorno recibe. Son fundamentales
+para implementar logica de negocio reactiva y eficiente.
 
 ----------------------------------------
-1. @api.depends('field1', 'field2')
+1. @api.depends
 ----------------------------------------
-Propósito: Se usa exclusivamente para campos computados.
-Efecto: Indica a Odoo que debe recalcular el campo solo cuando 
-los campos listados en los argumentos cambien su valor.
+Proposito: Marca los campos de los que depende un campo compute.
+           Odoo recalcula el campo cuando alguno de ellos cambia.
 
-SINTAXIS:
-@api.depends('price_unit', 'quantity')
-def _compute_subtotal(self):
-    for record in self:
-        record.subtotal = record.price_unit * record.quantity
+EJEMPLO:
+    @api.depends('precio_unitario', 'cantidad', 'descuento')
+    def _compute_subtotal(self):
+        for record in self:
+            base = record.precio_unitario * record.cantidad
+            record.subtotal = base * (1 - record.descuento / 100)
 
-----------------------------------------
-2. @api.onchange('field_id')
-----------------------------------------
-Propósito: Actualizar campos en la interfaz de usuario en tiempo real 
-mientras el usuario escribe (antes de guardar).
-Efecto: Solo funciona en la vista formulario (Frontend). No afecta 
-a las importaciones de datos o llamadas vía API.
+DEPENDS EN CAMPOS DE LINEAS (One2many):
+    @api.depends('linea_ids.subtotal', 'linea_ids.impuesto')
+    def _compute_total(self):
+        for record in self:
+            record.total = sum(record.linea_ids.mapped('subtotal'))
 
-SINTAXIS:
-@api.onchange('partner_id')
-def _onchange_partner(self):
-    self.email = self.partner_id.email
+REGLA: Si falta un campo en @api.depends, el compute no se
+recalculara cuando ese campo cambie. Error silencioso y dificil de detectar.
 
 ----------------------------------------
-3. @api.constrains('field_name')
+2. @api.onchange
 ----------------------------------------
-Propósito: Validaciones de integridad del negocio (Python Constraints).
-Efecto: Se ejecuta al crear o escribir. Si la validación falla, 
-lanza una excepción y hace un rollback de la transacción.
+Proposito: Ejecuta logica cuando el usuario cambia un campo en la UI.
+           Solo actua en el formulario (antes de guardar).
+           NO se ejecuta desde codigo Python (write, create, etc.).
 
-SINTAXIS:
-@api.constrains('age')
-def _check_age(self):
-    if self.age < 0:
-        raise ValidationError("La edad no puede ser negativa.")
+EJEMPLO:
+    @api.onchange('partner_id')
+    def _onchange_partner_id(self):
+        if self.partner_id:
+            self.payment_term_id = self.partner_id.property_payment_term_id
+            self.pricelist_id    = self.partner_id.property_product_pricelist
+        else:
+            self.payment_term_id = False
 
-----------------------------------------
-4. @api.model
-----------------------------------------
-Propósito: Define métodos que no actúan sobre un recordset específico 
-sino sobre el modelo en general (estilo static method).
-Efecto: El 'self' no contiene registros, solo la referencia al modelo.
+RETORNAR WARNING AL USUARIO:
+    @api.onchange('cantidad')
+    def _onchange_cantidad(self):
+        if self.cantidad < 0:
+            self.cantidad = 0
+            return {
+                'warning': {
+                    'title'  : 'Valor invalido',
+                    'message': 'La cantidad no puede ser negativa.',
+                }
+            }
 
-SINTAXIS:
-@api.model
-def action_custom_init(self):
-    # Lógica global del modelo
-    pass
-
-----------------------------------------
-5. @api.returns('self')
-----------------------------------------
-Propósito: Asegura que el método devuelva un recordset del tipo 
-especificado, adaptando el resultado según el contexto (ID vs Objeto).
-
-----------------------------------------
-REGLAS DE ORO DEL EXPERTO
-----------------------------------------
-1. DEPENDS VS ONCHANGE: En Odoo moderno, se prefiere @api.depends 
-   incluso para campos que no se guardan (store=False), ya que es 
-   más robusto que @api.onchange.
-
-2. @API.ONCHANGE Y RELACIONES: Evita modificar campos One2many 
-   dentro de un onchange complejo, puede causar inconsistencias 
-   en el caché del navegador.
-
-3. MULTI-REGISTRO: Casi todos los decoradores actúan sobre un 
-   recordset. Siempre usa: "for record in self:". Si olvidas el 
-   bucle, el código fallará al procesar múltiples registros.
-
-4. EVITAR LÓGICA PESADA EN ONCHANGE: Como se ejecutan cada vez que 
-   el usuario pulsa una tecla o cambia de campo, un onchange 
-   lento destruye la experiencia de usuario (lag).
+DIFERENCIA CLAVE @api.depends vs @api.onchange:
+  @api.depends  --> Para campos COMPUTE. Se ejecuta en BD y en UI.
+                    Actua al guardar y al cargar el registro.
+  @api.onchange --> Solo en UI, antes de guardar. Para actualizar
+                    otros campos cuando el usuario interactua.
 
 ----------------------------------------
-CASO ESPECIAL: @api.autovacuum
+3. @api.constrains
 ----------------------------------------
-Utilizado para métodos que deben ejecutarse periódicamente para 
-limpiar tablas temporales (común en TransientModels).
+Proposito: Valida condiciones DESPUES de guardar (dentro de la transaccion).
+           Si lanza ValidationError, se hace rollback del guardado.
+
+EJEMPLO:
+    from odoo.exceptions import ValidationError
+
+    @api.constrains('fecha_inicio', 'fecha_fin')
+    def _check_fechas_validas(self):
+        for record in self:
+            if record.fecha_fin and record.fecha_inicio > record.fecha_fin:
+                raise ValidationError(
+                    f'La fecha de fin ({record.fecha_fin}) no puede ser '
+                    f'anterior a la de inicio ({record.fecha_inicio}).'
+                )
+
+REGLA: @api.constrains se ejecuta en create() y write().
+       No se ejecuta en SQL crudo.
+
+----------------------------------------
+4. @api.model_create_multi
+----------------------------------------
+Proposito: Sobreescribir el metodo create() en Odoo 16+/18.
+           Recibe una LISTA de diccionarios (vals_list).
+
+EJEMPLO:
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            if not vals.get('referencia'):
+                vals['referencia'] = self.env['ir.sequence'].next_by_code(
+                    'mi.modelo.referencia'
+                )
+        return super().create(vals_list)
+
+IMPORTANTE: En Odoo 18 usa @api.model_create_multi, NO @api.model.
+El parametro es vals_list (lista), no vals (dict).
+
+----------------------------------------
+5. @api.model
+----------------------------------------
+Proposito: El metodo no opera sobre registros especificos.
+           No requiere self con registros. Se llama sobre el modelo.
+
+USOS TIPICOS:
+  - Metodos que crean registros (antes era para create, ahora es model_create_multi).
+  - Metodos de utilidad o configuracion a nivel de modelo.
+  - Metodos llamados desde acciones de servidor sin contexto de registro.
+
+EJEMPLO:
+    @api.model
+    def obtener_config_global(self):
+        return self.env['ir.config_parameter'].sudo().get_param(
+            'mi_modulo.config_key', default='valor_default'
+        )
+
+----------------------------------------
+6. @api.returns
+----------------------------------------
+Proposito: Indica el tipo de retorno del metodo para que el ORM
+           pueda convertir los resultados correctamente entre versiones.
+
+EJEMPLO:
+    @api.returns('self', lambda value: value.id)
+    def create(self, vals_list):
+        return super().create(vals_list)
+
+USO AVANZADO: Principalmente para compatibilidad con versiones anteriores.
+En Odoo 18 moderno es menos frecuente verlo en codigo nuevo.
+
+----------------------------------------
+7. @api.autovacuum
+----------------------------------------
+Proposito: Marca un metodo para que se ejecute periodicamente durante
+           el proceso de autovacuum de Odoo (limpieza de TransientModels).
+
+EJEMPLO:
+    @api.autovacuum
+    def _gc_limpiar_logs_viejos(self):
+        limite = fields.Datetime.now() - timedelta(days=30)
+        self.env['mi.log.model'].search([('fecha', '<', limite)]).unlink()
+
+----------------------------------------
+ERRORES COMUNES
+----------------------------------------
+[X] El campo compute no se actualiza al cambiar el campo dependiente
+    Causa:    El campo falta en @api.depends o tiene typo en el nombre.
+    Solucion: Verificar nombres exactos en @api.depends. Para campos de
+              lineas, usar notacion con punto: 'linea_ids.campo'.
+
+[X] @api.onchange no se ejecuta al guardar desde codigo
+    Causa:    Es el comportamiento correcto. onchange solo es UI.
+    Solucion: Si necesitas la misma logica en codigo, extraela a un metodo
+              separado y llamalo desde onchange Y desde create/write.
+
+[X] "TypeError: create() takes 2 positional arguments but 3 were given"
+    Causa:    Se uso @api.model con el parametro vals en lugar de
+              @api.model_create_multi con vals_list.
+    Solucion: Cambiar a @api.model_create_multi y el parametro a vals_list.
+
+[X] @api.constrains no valida al importar datos masivamente
+    Causa:    Algunas importaciones masivas usan SQL directo que omite el ORM.
+    Solucion: Para datos criticos, usar tambien _sql_constraints.
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. DEPENDS COMPLETO: Incluye TODOS los campos que afectan el calculo
+   en @api.depends. Un depends incompleto es un bug silencioso.
+
+2. ONCHANGE SOLO PARA UI: Nunca dependas de onchange para logica
+   critica de negocio. Duplica la logica en create/write si es necesario.
+
+3. CREATE_MULTI EN ODOO 18: SIEMPRE usa @api.model_create_multi
+   para sobreescribir create(). El parametro es vals_list (lista de dicts).
+
+4. SUPER() SIEMPRE: En create, write y unlink sobreescritos, llama
+   a super() a menos que tengas una razon muy especifica para no hacerlo.
+
+5. CONSTRAINS VS SQL: Para validaciones simples (unicidad, rangos),
+   prefiere _sql_constraints. Para logica compleja, usa @api.constrains.
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-orm.txt         --> Metodos CRUD que complementan los decoradores
+  notas-models.txt      --> Donde se definen los metodos decorados
+  notas-fields.txt      --> Campos compute que usan @api.depends
 
 ========================================

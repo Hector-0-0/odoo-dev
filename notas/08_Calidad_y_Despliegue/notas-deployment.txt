@@ -1,0 +1,319 @@
+========================================
+  GUIA: DEPLOYMENT - DESPLIEGUE
+========================================
+  SECCION : 08_Calidad_y_Despliegue
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-deployment.txt
+========================================
+
+----------------------------------------
+DESCRIPCION TECNICA
+----------------------------------------
+El despliegue de Odoo 18 en produccion implica configurar correctamente
+el servidor de aplicacion, la base de datos PostgreSQL, el proxy
+inverso (Nginx), y opcionalmente Docker para contenedorizacion.
+Una configuracion incorrecta puede resultar en perdida de datos,
+problemas de rendimiento o vulnerabilidades de seguridad.
+
+----------------------------------------
+1. ARCHIVO odoo.conf - CONFIGURACION DEL SERVIDOR
+----------------------------------------
+Proposito: Configurar todos los parametros del servidor Odoo.
+
+ARCHIVO: /etc/odoo/odoo.conf (produccion) o ./odoo.conf (desarrollo)
+
+    [options]
+
+    ; --- BASE DE DATOS ---
+    db_host = localhost
+    db_port = 5432
+    db_user = odoo
+    db_password = password_muy_seguro
+    db_name = mi_empresa_db
+
+    ; --- RUTAS ---
+    addons_path = /odoo/addons,/odoo/custom_addons
+    data_dir = /var/lib/odoo
+
+    ; --- RENDIMIENTO ---
+    workers = 4                    ; Numero de procesos worker
+                                   ; Regla: (CPU * 2) + 1
+    max_cron_threads = 2           ; Procesos para cron jobs
+    limit_memory_hard = 2684354560 ; 2.5 GB por worker (bytes)
+    limit_memory_soft = 2147483648 ; 2 GB limite suave
+    limit_request = 8192           ; Max peticiones por worker
+    limit_time_cpu = 60            ; Segundos CPU por peticion
+    limit_time_real = 120          ; Segundos reales por peticion
+
+    ; --- SEGURIDAD ---
+    admin_passwd = hash_muy_secreto_del_master_password
+    list_db = False                ; Deshabilitar lista de DBs (seguridad)
+    dbfilter = ^mi_empresa_db$     ; Solo permitir acceso a esta DB
+
+    ; --- LOGS ---
+    logfile = /var/log/odoo/odoo.log
+    log_level = warn               ; debug | info | warn | error | critical
+    log_db = False                 ; No loggear en DB (rendimiento)
+
+    ; --- EMAIL ---
+    email_from = noreply@mi-empresa.com
+    smtp_server = smtp.gmail.com
+    smtp_port = 587
+    smtp_ssl = False
+    smtp_user = noreply@mi-empresa.com
+    smtp_password = app_password_de_gmail
+
+    ; --- PROXY ---
+    proxy_mode = True              ; Obligatorio si hay Nginx/proxy delante
+
+CALCULO DE WORKERS:
+  Para un servidor con 4 CPUs:
+  workers = (4 * 2) + 1 = 9 workers
+
+----------------------------------------
+2. DOCKER - DESPLIEGUE CON CONTENEDORES
+----------------------------------------
+Proposito: Desplegar Odoo en contenedores para mayor portabilidad.
+
+ARCHIVO: docker-compose.yml
+
+    version: '3.8'
+
+    services:
+
+      odoo:
+        image: odoo:18.0
+        container_name: odoo18
+        depends_on:
+          - db
+        ports:
+          - "8069:8069"
+        volumes:
+          - odoo_data:/var/lib/odoo
+          - ./config/odoo.conf:/etc/odoo/odoo.conf:ro
+          - ./custom_addons:/mnt/extra-addons:ro
+        environment:
+          - HOST=db
+          - USER=odoo
+          - PASSWORD=odoo_password
+        restart: unless-stopped
+
+      db:
+        image: postgres:15
+        container_name: postgres_odoo
+        environment:
+          - POSTGRES_DB=postgres
+          - POSTGRES_USER=odoo
+          - POSTGRES_PASSWORD=odoo_password
+          - PGDATA=/var/lib/postgresql/data/pgdata
+        volumes:
+          - postgres_data:/var/lib/postgresql/data
+        restart: unless-stopped
+
+      nginx:
+        image: nginx:latest
+        container_name: nginx_odoo
+        ports:
+          - "80:80"
+          - "443:443"
+        volumes:
+          - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
+          - ./ssl:/etc/nginx/ssl:ro
+        depends_on:
+          - odoo
+        restart: unless-stopped
+
+    volumes:
+      odoo_data:
+      postgres_data:
+
+COMANDOS DOCKER ESENCIALES:
+    docker-compose up -d               # Levantar en segundo plano
+    docker-compose down                # Detener y eliminar contenedores
+    docker-compose logs -f odoo        # Ver logs en tiempo real
+    docker-compose exec odoo bash      # Entrar al contenedor
+    docker-compose pull                # Actualizar imagenes
+
+----------------------------------------
+3. NGINX - PROXY INVERSO
+----------------------------------------
+Proposito: Servir Odoo de forma segura con HTTPS y mejor rendimiento.
+
+ARCHIVO: /etc/nginx/sites-available/odoo
+
+    upstream odoo {
+        server 127.0.0.1:8069;
+    }
+    upstream odoo_chat {
+        server 127.0.0.1:8072;     # Puerto para longpolling
+    }
+
+    server {
+        listen 80;
+        server_name mi-empresa.com www.mi-empresa.com;
+        return 301 https://$host$request_uri;  # Redirigir a HTTPS
+    }
+
+    server {
+        listen 443 ssl;
+        server_name mi-empresa.com;
+
+        ssl_certificate     /etc/ssl/certs/mi-empresa.crt;
+        ssl_certificate_key /etc/ssl/private/mi-empresa.key;
+        ssl_protocols       TLSv1.2 TLSv1.3;
+
+        # Archivos estaticos servidos por Nginx (no Odoo)
+        location ~* /web/static/ {
+            proxy_cache_valid 200 90d;
+            proxy_buffering    on;
+            expires            864000;
+            proxy_pass         http://odoo;
+        }
+
+        # Longpolling para notificaciones en tiempo real
+        location /web/longpolling {
+            proxy_pass http://odoo_chat;
+        }
+
+        # Todo lo demas va a Odoo
+        location / {
+            proxy_pass                         http://odoo;
+            proxy_read_timeout                 720s;
+            proxy_connect_timeout              720s;
+            proxy_send_timeout                 720s;
+            proxy_set_header Host              $host;
+            proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        client_max_body_size 512m;    # Para subir archivos grandes
+    }
+
+IMPORTANTE: Con Nginx, activar proxy_mode = True en odoo.conf.
+
+----------------------------------------
+4. VARIABLES DE ENTORNO (ALTERNATIVA A odoo.conf)
+----------------------------------------
+Proposito: Configurar Odoo via variables de entorno (recomendado en Docker).
+
+Las variables siguen el patron: ODOO_<PARAMETRO_EN_MAYUSCULAS>
+
+    ODOO_DB_HOST=localhost
+    ODOO_DB_PORT=5432
+    ODOO_DB_USER=odoo
+    ODOO_DB_PASSWORD=secreto
+    ODOO_ADDONS_PATH=/odoo/addons,/custom_addons
+    ODOO_WORKERS=4
+    ODOO_LOG_LEVEL=warn
+
+En docker-compose.yml:
+    environment:
+      - ODOO_DB_HOST=db
+      - ODOO_DB_USER=odoo
+      - ODOO_WORKERS=4
+
+----------------------------------------
+5. ACTUALIZACION DE MODULOS EN PRODUCCION
+----------------------------------------
+Proposito: Actualizar modulos sin downtime excesivo.
+
+PROCEDIMIENTO SEGURO:
+  1. Hacer backup de la base de datos ANTES de cualquier actualizacion.
+  2. Poner Odoo en modo mantenimiento (opcional pero recomendado).
+  3. Actualizar el codigo fuente (git pull).
+  4. Ejecutar actualizacion del modulo:
+       python odoo-bin -u mi_modulo -d mi_db --stop-after-init
+  5. Reiniciar el servidor Odoo.
+  6. Verificar que todo funcione correctamente.
+
+BACKUP DE BASE DE DATOS:
+    pg_dump -U odoo -h localhost mi_empresa_db > backup_$(date +%Y%m%d).sql
+
+RESTAURAR BACKUP:
+    psql -U odoo -h localhost mi_empresa_db < backup_20260303.sql
+
+----------------------------------------
+6. CHECKLIST DE PRODUCCION
+----------------------------------------
+Antes de lanzar a produccion, verificar:
+
+SEGURIDAD:
+  [ ] admin_passwd configurado con un hash fuerte.
+  [ ] list_db = False para ocultar lista de bases de datos.
+  [ ] dbfilter configurado para limitar acceso a la DB correcta.
+  [ ] HTTPS activado con certificado SSL valido.
+  [ ] Puerto 8069 no expuesto directamente (solo via Nginx).
+
+RENDIMIENTO:
+  [ ] workers configurado segun CPUs disponibles.
+  [ ] proxy_mode = True si hay Nginx.
+  [ ] PostgreSQL optimizado (shared_buffers, work_mem).
+  [ ] Archivos estaticos servidos por Nginx, no por Odoo.
+
+OPERACIONES:
+  [ ] Backups automaticos configurados y probados.
+  [ ] Logs rotados para no llenar el disco.
+  [ ] Monitoreo de uso de CPU/RAM/disco activo.
+  [ ] Plan de recuperacion ante desastres documentado.
+
+----------------------------------------
+ERRORES COMUNES
+----------------------------------------
+[X] Odoo muy lento en produccion con workers=0
+    Causa:    workers=0 usa modo single-thread (solo para desarrollo).
+    Solucion: Configurar workers >= 2 en produccion.
+
+[X] Error "Wrong master password"
+    Causa:    admin_passwd en odoo.conf es la password sin hashear.
+    Solucion: Dejar admin_passwd vacio la primera vez, configurarlo
+              desde la UI de Odoo (Configuracion --> Contrasena maestra).
+
+[X] Los assets JS/CSS no cargan en produccion
+    Causa:    proxy_mode no esta activado con Nginx.
+    Solucion: Agregar proxy_mode = True en odoo.conf.
+
+[X] "Connection refused" desde Nginx a Odoo
+    Causa:    Odoo no esta corriendo o escucha en un puerto diferente.
+    Solucion: Verificar que Odoo corra y que el puerto en nginx.conf
+              coincida con xmlrpc_port en odoo.conf (default: 8069).
+
+[X] Archivos subidos desaparecen tras reiniciar Docker
+    Causa:    El volumen de datos no esta montado correctamente.
+    Solucion: Verificar que /var/lib/odoo este en un volumen persistente
+              en el docker-compose.yml.
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. BACKUP ANTES DE TODO: Cualquier cambio en produccion (update,
+   migracion, cambio de config) debe ir precedido de un backup.
+
+2. WORKERS EN PRODUCCION: Nunca workers=0 en produccion.
+   Minimo 2 workers para manejar peticiones concurrentes.
+
+3. HTTPS SIEMPRE: Nunca exponer Odoo en HTTP sin cifrar en produccion.
+   Los datos de empresa son sensibles.
+
+4. PROXY_MODE: Si hay Nginx o cualquier proxy, proxy_mode = True
+   es obligatorio. Sin esto, Odoo no conoce la IP real del cliente.
+
+5. LIST_DB=FALSE: En produccion, siempre deshabilitar la lista de
+   bases de datos para evitar enumeracion y ataques.
+
+----------------------------------------
+CUANDO USAR CADA OPCION
+----------------------------------------
+  Desarrollo local?                --> workers=0, log_level=debug
+  Staging/QA?                      --> workers=2, log_level=info
+  Produccion pequena (1-10 users)? --> workers=2-4, Nginx, HTTPS
+  Produccion grande (50+ users)?   --> workers=8+, Docker, Nginx, SSL
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-debugging.txt --> Configurar logs en produccion
+  notas-testing.txt   --> Tests antes de desplegar
+  notas-static.txt    --> CI/CD donde se ejecutan linters y tests
+
+========================================

@@ -1,0 +1,254 @@
+========================================
+  GUIA: QWEB - REPORTES Y PORTAL
+========================================
+  SECCION : 06_Frontend_y_Web
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-qweb.txt
+========================================
+
+----------------------------------------
+DESCRIPCION TECNICA
+----------------------------------------
+QWeb es el motor de plantillas XML de Odoo. Se usa para dos cosas:
+1. Generar reportes PDF (facturas, ordenes, etiquetas).
+2. Renderizar paginas HTML en el portal del cliente.
+Funciona con directivas especiales (t-if, t-foreach, t-field, etc.)
+que Odoo interpreta para producir el HTML/PDF final.
+
+----------------------------------------
+1. ESTRUCTURA DE UN REPORTE PDF
+----------------------------------------
+Proposito: Crear un reporte imprimible vinculado a un modelo.
+
+PASO 1 - Declarar la accion del reporte (ir.actions.report):
+    <record id="action_reporte_orden" model="ir.actions.report">
+        <field name="name">Orden de Venta</field>
+        <field name="model">sale.order</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">mi_modulo.reporte_orden_template</field>
+        <field name="report_file">mi_modulo.reporte_orden_template</field>
+        <field name="binding_model_id" ref="sale.model_sale_order"/>
+        <field name="binding_type">report</field>
+    </record>
+
+PASO 2 - Crear la plantilla QWeb:
+    <template id="reporte_orden_template">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="doc">
+                <t t-call="web.external_layout">
+                    <div class="page">
+                        <h2>Orden: <span t-field="doc.name"/></h2>
+                        <p>Cliente: <span t-field="doc.partner_id.name"/></p>
+
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Producto</th>
+                                    <th>Cantidad</th>
+                                    <th>Precio</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-foreach="doc.order_line" t-as="line">
+                                    <tr>
+                                        <td><span t-field="line.product_id.name"/></td>
+                                        <td><span t-field="line.product_uom_qty"/></td>
+                                        <td><span t-field="line.price_unit"/></td>
+                                    </tr>
+                                </t>
+                            </tbody>
+                        </table>
+                    </div>
+                </t>
+            </t>
+        </t>
+    </template>
+
+VARIABLE 'docs':
+  Es la variable magica que Odoo inyecta automaticamente.
+  Contiene los registros seleccionados del modelo declarado en la accion.
+
+----------------------------------------
+2. DIRECTIVAS QWEB PRINCIPALES
+----------------------------------------
+
+t-field         --> Renderiza el valor de un campo con formato Odoo
+                    (aplica formato de moneda, fecha, etc.)
+    <span t-field="doc.amount_total"/>
+
+t-esc           --> Renderiza texto plano, escapa HTML (mas seguro)
+    <span t-esc="doc.name"/>
+
+t-raw           --> Renderiza HTML sin escapar (usar con cuidado)
+    <div t-raw="doc.description_html"/>
+
+t-if / t-elif / t-else --> Condicionales
+    <t t-if="doc.state == 'done'">
+        <span>Completado</span>
+    </t>
+    <t t-else="">
+        <span>En proceso</span>
+    </t>
+
+t-foreach / t-as --> Iteracion sobre listas
+    <t t-foreach="doc.order_line" t-as="line">
+        <tr><td t-esc="line.name"/></tr>
+    </t>
+
+t-call          --> Incluir otra plantilla (como un include)
+    <t t-call="mi_modulo.mi_sub_plantilla"/>
+
+t-set           --> Declarar una variable local
+    <t t-set="total" t-value="doc.amount_total * 1.18"/>
+    <span t-esc="total"/>
+
+t-att           --> Asignar atributos HTML dinamicamente
+    <div t-att-class="'badge-' + doc.state"/>
+
+----------------------------------------
+3. LAYOUTS PREDEFINIDOS DE ODOO
+----------------------------------------
+Proposito: Usar la cabecera/pie de pagina con logo de la empresa.
+
+web.html_container    --> Contenedor HTML base (siempre el mas externo)
+web.external_layout   --> Layout con logo, datos empresa, cabecera y pie
+web.internal_layout   --> Layout interno simplificado
+
+ESTRUCTURA CORRECTA:
+    <t t-call="web.html_container">         <!-- siempre primero -->
+        <t t-foreach="docs" t-as="doc">
+            <t t-call="web.external_layout"> <!-- logo + datos empresa -->
+                <div class="page">
+                    <!-- tu contenido aqui -->
+                </div>
+            </t>
+        </t>
+    </t>
+
+----------------------------------------
+4. REPORTE HTML (en lugar de PDF)
+----------------------------------------
+Cambiar en la accion:
+    <field name="report_type">qweb-html</field>
+
+Util para vistas previas o reportes que no necesitan impresion.
+
+----------------------------------------
+5. PAGINAS DE PORTAL (WEBSITE)
+----------------------------------------
+Proposito: Mostrar datos del ERP al cliente en el portal web.
+
+CONTROLADOR (Python):
+    from odoo import http
+    from odoo.http import request
+
+    class MiPortal(http.Controller):
+
+        @http.route('/mi-portal/ordenes', auth='user', website=True)
+        def mis_ordenes(self, **kwargs):
+            ordenes = request.env['sale.order'].search([
+                ('partner_id', '=', request.env.user.partner_id.id)
+            ])
+            return request.render('mi_modulo.template_mis_ordenes', {
+                'ordenes': ordenes,
+            })
+
+PLANTILLA QWeb para el portal:
+    <template id="template_mis_ordenes" name="Mis Ordenes">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+            <div class="container">
+                <h3>Mis Ordenes</h3>
+                <t t-foreach="ordenes" t-as="orden">
+                    <div class="card mb-3">
+                        <div class="card-body">
+                            <h5 t-esc="orden.name"/>
+                            <p>Estado: <span t-esc="orden.state"/></p>
+                        </div>
+                    </div>
+                </t>
+            </div>
+        </t>
+    </template>
+
+----------------------------------------
+6. HEREDAR Y MODIFICAR UNA PLANTILLA QWEB
+----------------------------------------
+Proposito: Agregar contenido a un reporte existente sin modificarlo.
+
+    <template id="reporte_factura_heredado"
+              inherit_id="account.report_invoice_document">
+        <xpath expr="//div[@class='page']" position="inside">
+            <div class="mt-3">
+                <strong>Nota interna:</strong>
+                <span t-field="doc.narration"/>
+            </div>
+        </xpath>
+    </template>
+
+----------------------------------------
+ERRORES COMUNES
+----------------------------------------
+[X] El reporte aparece en blanco o con error de renderizado
+    Causa:    t-field aplicado a un campo que puede ser False/None.
+    Solucion: Agregar t-if antes:
+              <t t-if="doc.partner_id">
+                  <span t-field="doc.partner_id.name"/>
+              </t>
+
+[X] "report_name not found"
+    Causa:    El report_name en la accion no coincide con el id
+              de la plantilla template.
+    Solucion: Verificar que sea 'nombre_modulo.id_template'.
+
+[X] El logo de empresa no aparece en el PDF
+    Causa:    No se uso web.external_layout.
+    Solucion: Envolver el contenido con t-call="web.external_layout".
+
+[X] Caracteres especiales no se muestran en PDF
+    Causa:    La fuente del PDF no soporta el caracter.
+    Solucion: Usar t-esc en lugar de t-field para texto plano,
+              o configurar la fuente en el CSS del reporte.
+
+[X] Error "t-foreach requires t-as"
+    Causa:    Se uso t-foreach sin declarar la variable con t-as.
+    Solucion: Siempre en par: t-foreach="lista" t-as="item"
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. T-FIELD vs T-ESC: Usa t-field para campos de modelos Odoo
+   (aplica formato automatico). Usa t-esc para variables Python
+   o cuando quieres texto plano sin formato.
+
+2. LAYOUT: Siempre envuelve con web.html_container y
+   web.external_layout para reportes con marca de empresa.
+
+3. DOCS: La variable 'docs' es inyectada automaticamente por Odoo
+   en reportes. No la declares tu, solo usala.
+
+4. HERENCIA: Para modificar reportes existentes (ej: factura de
+   Odoo), usa inherit_id + xpath. Nunca copies y modifiques
+   la plantilla original.
+
+5. PORTAL AUTH: Las rutas de portal deben tener auth='user'
+   para que solo accedan usuarios autenticados.
+
+----------------------------------------
+CUANDO USAR CADA UNO
+----------------------------------------
+  Reporte PDF imprimible?          --> qweb-pdf + web.external_layout
+  Vista previa en navegador?       --> qweb-html
+  Pagina del portal del cliente?   --> Controller + template portal
+  Modificar factura de Odoo?       --> inherit_id en template QWeb
+  Email con formato?               --> mail.template con QWeb inline
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-owl-framework.txt --> OWL para interfaces interactivas (no reportes)
+  notas-controllers.txt   --> Rutas HTTP para servir paginas de portal
+  notas-assets.txt        --> Como registrar CSS para reportes en el manifest
+  notas-actions.txt       --> ir.actions.report para lanzar reportes
+
+========================================

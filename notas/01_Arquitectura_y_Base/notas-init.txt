@@ -1,75 +1,132 @@
 ========================================
-      GUÍA MAESTRA: ARCHIVOS __INIT__
+  GUIA: EL ARCHIVO __INIT__.PY
+========================================
+  SECCION : 01_Arquitectura_y_Base
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-init.txt
 ========================================
 
 ----------------------------------------
-DESCRIPCIÓN TÉCNICA
+DESCRIPCION TECNICA
 ----------------------------------------
-En Odoo, los archivos __init__.py transforman carpetas normales en
-paquetes de Python. Son los encargados de "orquestar" la carga de 
-toda la lógica de negocio (Python) cuando el servidor arranca.
+El __init__.py es el punto de entrada de Python para el modulo Odoo.
+Le dice a Python que carpetas y archivos debe importar cuando el
+modulo se carga. Sin este archivo, los modelos y controladores
+definidos en el modulo nunca seran registrados por Odoo.
 
 ----------------------------------------
-FLUJO DE CARGA (IMPORTACIÓN)
+1. ARCHIVO RAIZ DEL MODULO
 ----------------------------------------
-1. Raíz del módulo: El __init__.py principal llama a las subcarpetas.
-2. Subcarpetas: Cada carpeta (models, wizards, etc.) tiene su propio
-   __init__.py que llama a los archivos .py individuales.
+Proposito: Importar los sub-paquetes principales del modulo.
+
+ESTRUCTURA DE CARPETA:
+  mi_modulo/
+  |-- __init__.py        <-- Este archivo
+  |-- __manifest__.py
+  |-- models/
+  |-- wizards/
+  |-- controllers/
+
+EJEMPLO - __init__.py en la raiz:
+    from . import models
+    from . import wizards
+    from . import controllers
+
+REGLA: Solo importa carpetas que existan y tengan su propio __init__.py.
 
 ----------------------------------------
-ESTRUCTURA CORRECTA (RAÍZ)
+2. __INIT__.PY DENTRO DE SUBCARPETAS
 ----------------------------------------
-Ubicación: /tu_modulo/__init__.py
+Proposito: Importar cada archivo .py individual dentro de la carpeta.
 
-from . import models      --> Importa la carpeta de modelos
-from . import wizards     --> Importa asistentes (si existen)
-from . import controllers --> Importa lógica web (si existen)
-from . import report      --> Importa lógica de reportes abstractos
+EJEMPLO - models/__init__.py:
+    from . import sale_order
+    from . import res_partner
+    from . import product_template
 
-----------------------------------------
-ESTRUCTURA EN /MODELS/
-----------------------------------------
-Ubicación: /tu_modulo/models/__init__.py
-Aquí debes listar todos los archivos .py que crees en esa carpeta.
+EJEMPLO - wizards/__init__.py:
+    from . import wizard_confirmar_pedido
 
-from . import sale_order            --> Sin la extensión .py
-from . import custom_model          --> El orden suele ser indiferente
-from . import res_partner_inherit   --> Excepto si hay dependencias internas
+REGLA: El orden de importacion importa si un modelo hereda de otro
+definido en el mismo modulo. El padre debe importarse primero.
 
 ----------------------------------------
-REGLAS DE ORO DEL EXPERTO
+3. ESTRUCTURA COMPLETA DE UN MODULO REAL
 ----------------------------------------
-1. NO OLVIDAR: Si creas un archivo nuevo (ej: paciente.py) y no lo 
-   agregas al __init__.py de /models/, Odoo NO creará la tabla en DB.
-   
-2. IMPORTACIÓN RELATIVA: Usa siempre "from . import", nunca rutas 
-   absolutas. Esto asegura que el módulo sea portable.
-
-3. CONTROLADORES: Los controladores (web) se importan igual, pero 
-   suelen estar en la carpeta /controllers/.
-
-4. LIMPIEZA: No escribas lógica (funciones o clases) dentro de los 
-   __init__.py. Su única función debe ser importar otros archivos.
+mi_modulo/
+|-- __init__.py
+|     from . import models
+|     from . import wizards
+|     from . import controllers
+|
+|-- models/
+|     |-- __init__.py
+|     |     from . import mi_modelo_principal
+|     |     from . import mi_modelo_secundario
+|     |-- mi_modelo_principal.py
+|     |-- mi_modelo_secundario.py
+|
+|-- wizards/
+|     |-- __init__.py
+|     |     from . import mi_wizard
+|     |-- mi_wizard.py
+|
+|-- controllers/
+      |-- __init__.py
+      |     from . import main
+      |-- main.py
 
 ----------------------------------------
-ERRORES COMUNES (DEBUGGING)
+4. CASO: MODULO SIN MODELOS (solo datos XML)
 ----------------------------------------
-- Error: "Model 'x' does not exist": 
-  Causa: Olvidaste importar el archivo en el __init__.py de models.
-  
-- Error: "ImportError: cannot import name...":
-  Causa: Referencia circular o nombre de archivo mal escrito.
+Proposito: Modulos que solo agregan configuracion o vistas heredadas.
 
-- Error: El servidor inicia pero no detecta cambios en Python:
-  Causa: El __init__.py de la RAÍZ no está llamando a la carpeta.
+EJEMPLO:
+    # __init__.py vacio o con comentario
+    # Este modulo no define modelos Python propios.
+
+NOTA: El archivo debe existir de todas formas (puede estar vacio).
+Sin el, Python no reconoce la carpeta como un paquete.
 
 ----------------------------------------
-ORDEN RECOMENDADO DE CARGA
+ERRORES COMUNES
 ----------------------------------------
-Aunque Python es flexible, la convención en Odoo es:
-1. models
-2. wizards
-3. report (lógica .py)
-4. controllers
+[X] "ImportError: cannot import name 'X' from 'mi_modulo.models'"
+    Causa:    El archivo X.py existe pero no fue importado en __init__.py
+    Solucion: Agregar 'from . import X' en models/__init__.py
+
+[X] El modelo existe pero Odoo no lo registra en la base de datos
+    Causa:    Falta el __init__.py en la carpeta models/ o no importa el archivo.
+    Solucion: Verificar que models/__init__.py tenga el import correcto.
+
+[X] "No module named 'mi_modulo.controllers'"
+    Causa:    La carpeta controllers/ no tiene __init__.py
+    Solucion: Crear controllers/__init__.py con los imports necesarios.
+
+[X] Cambios en un modelo no se reflejan tras reiniciar
+    Causa:    El archivo nuevo no fue agregado al __init__.py
+    Solucion: Agregar el import y actualizar: -u nombre_modulo
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. SIEMPRE EXISTE: El __init__.py raiz del modulo debe existir siempre,
+   aunque este vacio. Sin el, Odoo no carga el modulo.
+
+2. REFLEJA LA ESTRUCTURA: Cada carpeta con archivos .py necesita
+   su propio __init__.py que los importe.
+
+3. ORDEN EN MODELOS: Si ModeloB hereda de ModeloA (ambos en tu modulo),
+   importa ModeloA primero en el __init__.py de models/.
+
+4. NO IMPORTES LO QUE NO EXISTE: Si importas una carpeta o archivo
+   que no existe, el modulo entero fallara al cargar.
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-manifest.txt    --> El manifest que declara los archivos XML
+  notas-scaffolding.txt --> Genera __init__.py automaticamente
+  notas-models.txt      --> Los modelos que se importan desde aqui
 
 ========================================

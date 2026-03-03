@@ -1,0 +1,239 @@
+========================================
+  GUIA: WEBHOOKS - INTEGRACIONES
+========================================
+  SECCION : 07_Automatizacion_y_Servicios
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-webhooks.txt
+========================================
+
+----------------------------------------
+DESCRIPCION TECNICA
+----------------------------------------
+Los webhooks permiten que sistemas externos notifiquen a Odoo
+(o que Odoo notifique a sistemas externos) cuando ocurre un evento,
+en tiempo real y sin necesidad de polling periodico.
+En Odoo 18, hay dos direcciones:
+  ENTRANTE: Un sistema externo llama a una URL de Odoo (endpoint).
+  SALIENTE: Odoo llama a una URL externa cuando ocurre un evento.
+
+----------------------------------------
+1. WEBHOOK ENTRANTE (Recibir notificaciones externas)
+----------------------------------------
+Proposito: Crear un endpoint en Odoo que recibe datos de un
+sistema externo (Stripe, PayPal, GitHub, etc.).
+
+CONTROLADOR PARA WEBHOOK:
+    from odoo import http
+    from odoo.http import request
+    import json
+    import logging
+
+    _logger = logging.getLogger(__name__)
+
+    class WebhookStripe(http.Controller):
+
+        @http.route('/webhook/stripe/pago', auth='none',
+                    methods=['POST'], csrf=False, type='http')
+        def webhook_pago_stripe(self, **kwargs):
+            try:
+                # Leer el body raw de la peticion
+                payload = request.httprequest.data
+                datos = json.loads(payload)
+
+                # Verificar firma de seguridad (SIEMPRE hacer esto)
+                firma = request.httprequest.headers.get('Stripe-Signature')
+                if not self._verificar_firma(payload, firma):
+                    _logger.warning("Webhook Stripe: firma invalida.")
+                    return request.make_response('Unauthorized', status=401)
+
+                # Procesar el evento
+                tipo_evento = datos.get('type')
+                if tipo_evento == 'payment_intent.succeeded':
+                    self._procesar_pago_exitoso(datos['data']['object'])
+
+                return request.make_response('OK', status=200)
+
+            except Exception as e:
+                _logger.error("Webhook Stripe error: %s", str(e))
+                return request.make_response('Error', status=500)
+
+        def _verificar_firma(self, payload, firma):
+            # Implementar verificacion HMAC con el secret de Stripe
+            import hmac, hashlib
+            secret = b'tu_webhook_secret_de_stripe'
+            expected = hmac.new(secret, payload, hashlib.sha256).hexdigest()
+            return hmac.compare_digest(expected, firma or '')
+
+        def _procesar_pago_exitoso(self, payment_intent):
+            referencia = payment_intent.get('metadata', {}).get('odoo_ref')
+            if referencia:
+                orden = request.env['sale.order'].sudo().search([
+                    ('name', '=', referencia)
+                ], limit=1)
+                if orden:
+                    orden.sudo().action_confirm()
+                    _logger.info(
+                        "Orden %s confirmada via webhook Stripe.", referencia
+                    )
+
+REGLA DE SEGURIDAD CRITICA:
+  Todo webhook entrante DEBE verificar la firma del proveedor.
+  Sin esto, cualquiera puede enviar datos falsos a tu endpoint.
+
+----------------------------------------
+2. WEBHOOK SALIENTE (Notificar a sistemas externos)
+----------------------------------------
+Proposito: Llamar a una URL externa cuando ocurre un evento en Odoo.
+
+OPCION A: Usando ir.actions.server (sin codigo)
+  Configuracion --> Tecnico --> Automatizacion --> Acciones del servidor
+  Tipo: Ejecutar codigo Python
+  Codigo:
+    import requests
+    records.filtered(lambda r: r.state == 'done').mapped(
+        lambda r: requests.post('https://mi-sistema.com/webhook', json={
+            'evento': 'orden_completada',
+            'referencia': r.name,
+            'cliente': r.partner_id.name,
+        }, timeout=5)
+    )
+
+OPCION B: Desde un metodo Python con override de write/create:
+    from odoo import models
+    import requests
+    import logging
+
+    _logger = logging.getLogger(__name__)
+
+    class SaleOrder(models.Model):
+        _inherit = 'sale.order'
+
+        def write(self, vals):
+            resultado = super().write(vals)
+            if 'state' in vals and vals['state'] == 'done':
+                for orden in self:
+                    self._enviar_webhook_completado(orden)
+            return resultado
+
+        def _enviar_webhook_completado(self, orden):
+            url = self.env['ir.config_parameter'].sudo().get_param(
+                'mi_modulo.webhook_url_completado'
+            )
+            if not url:
+                return
+
+            try:
+                response = requests.post(url, json={
+                    'evento': 'orden_completada',
+                    'id': orden.id,
+                    'referencia': orden.name,
+                    'cliente': orden.partner_id.name,
+                    'total': orden.amount_total,
+                }, timeout=5)
+                response.raise_for_status()
+                _logger.info("Webhook saliente enviado para orden %s.", orden.name)
+            except Exception as e:
+                _logger.error(
+                    "Error enviando webhook para orden %s: %s", orden.name, str(e)
+                )
+
+BUENA PRACTICA: Guardar la URL del webhook en ir.config_parameter
+(Parametros del sistema) en lugar de hardcodearla en el codigo.
+
+----------------------------------------
+3. COLAS DE WEBHOOK (PARA ALTA DISPONIBILIDAD)
+----------------------------------------
+Proposito: No perder webhooks si el sistema externo falla.
+
+PATRON RECOMENDADO para webhooks criticos:
+  1. Al recibir el webhook, guardar los datos en un modelo de cola.
+  2. Responder inmediatamente 200 OK al proveedor.
+  3. Un cron procesa la cola en segundo plano.
+
+    class WebhookCola(models.Model):
+        _name = 'webhook.cola'
+
+        payload = fields.Text()
+        tipo    = fields.Char()
+        estado  = fields.Selection([
+            ('pendiente', 'Pendiente'),
+            ('procesado', 'Procesado'),
+            ('error', 'Error'),
+        ], default='pendiente')
+
+    # En el controlador:
+    self.env['webhook.cola'].sudo().create({
+        'payload': json.dumps(datos),
+        'tipo': tipo_evento,
+    })
+    return request.make_response('OK', status=200)
+
+    # En un cron:
+    @api.model
+    def procesar_cola_webhooks(self):
+        pendientes = self.search([('estado', '=', 'pendiente')], limit=50)
+        for item in pendientes:
+            try:
+                # Procesar item.payload
+                item.estado = 'procesado'
+            except Exception as e:
+                item.estado = 'error'
+                _logger.error("Error en webhook cola %s: %s", item.id, e)
+
+----------------------------------------
+ERRORES COMUNES
+----------------------------------------
+[X] El proveedor reporta timeout al enviar el webhook
+    Causa:    El procesamiento en el controlador tarda demasiado.
+    Solucion: Responder 200 inmediatamente y procesar en cola/cron.
+
+[X] Error 403 en el endpoint del webhook
+    Causa:    csrf=False no fue declarado en el decorador @http.route.
+    Solucion: Agregar csrf=False a la ruta del webhook entrante.
+
+[X] Los datos no llegan correctamente
+    Causa:    El Content-Type del proveedor es application/x-www-form-urlencoded
+              en lugar de application/json.
+    Solucion: Leer request.httprequest.form en lugar de .data para
+              peticiones de formulario.
+
+[X] Webhook saliente falla silenciosamente
+    Causa:    No hay manejo de excepciones en el requests.post().
+    Solucion: Siempre envolver en try/except con _logger.error().
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. SEGURIDAD: Siempre verificar la firma del proveedor en webhooks
+   entrantes. Sin verificacion, el endpoint es un vector de ataque.
+
+2. RESPUESTA RAPIDA: Responder 200 en menos de 5 segundos.
+   Todo procesamiento pesado va en una cola y se procesa con cron.
+
+3. IDEMPOTENCIA: El mismo webhook puede llegar dos veces (reintento
+   del proveedor). Disena el procesamiento para que sea seguro
+   ejecutarlo multiples veces con el mismo payload.
+
+4. LOGS: Registrar todos los webhooks entrantes y salientes con
+   su payload y resultado. Critico para debugging en produccion.
+
+5. URL EN CONFIG: Nunca hardcodees URLs de webhooks salientes.
+   Guardarlas en ir.config_parameter para que sean configurables.
+
+----------------------------------------
+CUANDO USAR WEBHOOKS
+----------------------------------------
+  Recibir confirmacion de pago de Stripe/PayPal?  --> Webhook entrante
+  Notificar a un ERP externo de una venta?        --> Webhook saliente
+  Sincronizar inventario con una tienda Shopify?  --> Ambos
+  Enviar datos a un CRM cuando llega un lead?     --> Webhook saliente
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-controllers.txt  --> Como crear los endpoints HTTP
+  notas-cron.txt         --> Para procesar colas de webhooks
+  notas-api-external.txt --> Consumir APIs externas (distinto a webhooks)
+  notas-security.txt     --> Asegurar los endpoints de webhook
+
+========================================

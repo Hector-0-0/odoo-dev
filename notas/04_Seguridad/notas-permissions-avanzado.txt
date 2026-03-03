@@ -1,98 +1,199 @@
 ========================================
-    GUÍA MAESTRA: PERMISOS AVANZADOS
+  GUIA: PERMISOS AVANZADOS
+========================================
+  SECCION : 04_Seguridad
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-permissions-avanzado.txt
 ========================================
 
 ----------------------------------------
-DESCRIPCIÓN TÉCNICA
+DESCRIPCION TECNICA
 ----------------------------------------
-La seguridad avanzada en Odoo gestiona la jerarquía de funciones y 
-el control granular. No solo define quién entra, sino cómo se 
-heredan las responsabilidades y qué elementos de la UI (campos, 
-botones) desaparecen según el nivel de privilegio.
-
-----------------------------------------
-1. CATEGORÍAS DE SEGURIDAD (Application Categories)
-----------------------------------------
-Para que los grupos aparezcan organizados en la ficha del usuario 
-dentro de Ajustes, es obligatorio agruparlos en una categoría.
-
-SINTAXIS (XML):
-<record id="module_category_hospital" model="ir.module.category">
-    <field name="name">Gestión Hospitalaria</field>
-    <field name="description">Niveles de acceso para el personal</field>
-    <field name="sequence">10</field>
-</record>
+Mas alla del ACL (acceso al modelo) y las Record Rules (acceso al registro),
+Odoo permite controlar permisos a nivel de campo, elemento de vista, menu
+y accion. Esta guia cubre las tecnicas avanzadas para construir un sistema
+de seguridad granular y correcto en modulos complejos.
 
 ----------------------------------------
-2. HERENCIA DE GRUPOS (Implied IDs)
+1. PERMISOS A NIVEL DE CAMPO
 ----------------------------------------
-Permite crear una escalera de permisos. El "Manager" no necesita 
-permisos explícitos si hereda los del "Usuario".
+Proposito: Ocultar o hacer readonly un campo segun el grupo del usuario.
 
-SINTAXIS (XML):
-<record id="group_hospital_user" model="res.groups">
-    <field name="name">Usuario: Ver Pacientes</field>
-    <field name="category_id" ref="module_category_hospital"/>
-    <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
-</record>
+EN PYTHON (definicion del campo):
+    salario = fields.Float(
+        string='Salario',
+        groups='hr.group_hr_manager'    --> Solo visible para gerentes de RRHH
+    )
 
-<record id="group_hospital_manager" model="res.groups">
-    <field name="name">Administrador: Control Total</field>
-    <field name="category_id" ref="module_category_hospital"/>
-    <field name="implied_ids" eval="[(4, ref('group_hospital_user'))]"/>
-</record>
+    # El campo no aparece en ningun contexto (ni UI ni ORM) para usuarios
+    # fuera del grupo. El ORM retorna False para ese campo si no tienes acceso.
 
-----------------------------------------
-3. SEGURIDAD A NIVEL DE CAMPO Y BOTÓN
-----------------------------------------
-Puedes restringir elementos específicos de la lógica o la UI sin 
-necesidad de crear reglas de registro (Record Rules).
+EN XML (vista):
+    <field name="descuento_especial" groups="sales_team.group_sale_manager"/>
+    <!-- El campo se renderiza solo si el usuario pertenece al grupo -->
 
-- EN PYTHON (Atributo groups):
-  cost_price = fields.Float("Costo", groups="hospital.group_hospital_manager")
-  # El campo ni siquiera viajará al cliente si el usuario no tiene el grupo.
-
-- EN XML (Vistas):
-  <button name="action_cancel" string="Anular" 
-          groups="hospital.group_hospital_manager"/>
+DIFERENCIA:
+  groups en Python --> La restriccion aplica en ORM Y en vistas.
+  groups en XML    --> Solo restringe la vista, no el ORM.
+  Para datos sensibles, siempre usa groups en Python.
 
 ----------------------------------------
-4. MODIFICACIÓN DE ENTORNOS (SUDO / WITH_USER)
+2. PERMISOS EN MENUS
 ----------------------------------------
-Un desarrollador experto usa estas herramientas para saltar la 
-seguridad programáticamente de forma controlada.
+Proposito: Ocultar opciones del menu a usuarios sin el permiso.
 
-- self.sudo(): Crea un nuevo entorno con privilegios de Administrador.
-  Útil para leer configuraciones globales inaccesibles al usuario.
-- self.with_user(user_id): Cambia el contexto para verificar 
-  qué vería exactamente ese usuario.
+EN XML:
+    <menuitem
+        id="menu_hospital_configuracion"
+        name="Configuracion"
+        parent="menu_hospital_root"
+        action="action_hospital_config"
+        groups="mi_modulo.group_hospital_manager"
+        sequence="100"
+    />
 
-----------------------------------------
-REGLAS DE ORO DEL EXPERTO
-----------------------------------------
-1. NO USAR ADMIN PARA TESTEO: El usuario Administrador (ID 1) bypassea
-   la mayoría de las restricciones de seguridad. Prueba siempre con 
-   un usuario estándar para validar el CSV.
-
-2. ORDEN DE EVALUACIÓN:
-   - CSV (ACL): ¿Puede usar el modelo? (Puerta principal).
-   - Record Rules: ¿Qué registros de ese modelo puede ver? (Filtro).
-   - Field Groups: ¿Qué columnas puede ver? (Visibilidad).
-
-3. REGLAS MULTI-COMPAÑÍA: Siempre define una regla global (sin grupo)
-   para el campo 'company_id' si el módulo es multi-empresa.
-   [('company_id', 'in', company_ids)]
-
-4. EVITAR EL COMANDO (6, 0, [IDs]): En herencia de grupos, prefiere 
-   usar (4, ID) para añadir, ya que el comando 6 borra cualquier 
-   herencia previa que otros módulos pudieran haber inyectado.
+NOTA: Ocultar el menu no impide el acceso si el usuario conoce la URL.
+Para seguridad real, combina siempre con record rules y ACL.
 
 ----------------------------------------
-SINTAXIS DE RELACIONES (TUTORIAL RÁPIDO)
+3. PERMISOS EN BOTONES Y ACCIONES
 ----------------------------------------
-- (4, id): Enlaza un registro existente.
-- (3, id): Desvincula (no borra de la DB).
-- (2, id): Borra el registro físicamente de la DB.
-- (0, 0, {values}): Crea y enlaza un registro nuevo.
+Proposito: Mostrar u ocultar botones segun grupo o condicion.
+
+OCULTAR BOTON POR GRUPO (XML):
+    <button name="action_confirmar"
+            string="Confirmar"
+            type="object"
+            groups="mi_modulo.group_hospital_manager"/>
+
+OCULTAR BOTON POR CONDICION (Odoo 17+/18):
+    <button name="action_cancelar"
+            string="Cancelar"
+            type="object"
+            invisible="state != 'confirmado'"/>
+
+COMBINAR GRUPO Y CONDICION:
+    <button name="action_aprobar"
+            string="Aprobar"
+            type="object"
+            groups="mi_modulo.group_hospital_manager"
+            invisible="state != 'pendiente'"/>
+
+----------------------------------------
+4. REGLAS DE ACCESO EN ACCIONES DE SERVIDOR
+----------------------------------------
+Proposito: Verificar permisos dentro de un metodo de Python antes
+           de ejecutar logica critica.
+
+VERIFICACION MANUAL:
+    from odoo.exceptions import AccessError, UserError
+
+    def action_aprobar_presupuesto(self):
+        self.ensure_one()
+        # Verificar grupo
+        if not self.env.user.has_group('mi_modulo.group_hospital_manager'):
+            raise AccessError(
+                'Solo los gerentes pueden aprobar presupuestos.'
+            )
+        # Verificar estado
+        if self.state != 'pendiente':
+            raise UserError(
+                'Solo se pueden aprobar presupuestos en estado Pendiente.'
+            )
+        self.write({'state': 'aprobado', 'approved_by': self.env.uid})
+
+----------------------------------------
+5. EXCEPCIONES DE SEGURIDAD
+----------------------------------------
+Proposito: Usar la excepcion correcta segun el tipo de error.
+
+AccessError    --> Error de permisos (el usuario no tiene acceso).
+                   Odoo muestra dialogo de "Acceso denegado".
+    from odoo.exceptions import AccessError
+    raise AccessError('No tienes permiso para realizar esta accion.')
+
+UserError      --> Error de logica de negocio que el usuario debe corregir.
+                   Odoo muestra dialogo de advertencia al usuario.
+    from odoo.exceptions import UserError
+    raise UserError('No puedes eliminar un pedido confirmado.')
+
+ValidationError --> Error de validacion de datos (constrains).
+                    Odoo muestra dialogo de error de validacion.
+    from odoo.exceptions import ValidationError
+    raise ValidationError('La fecha de fin no puede ser anterior al inicio.')
+
+Warning        --> Advertencia que el usuario puede ignorar (deprecada en Odoo 17+).
+                   Usar UserError o el return de warning en onchange.
+
+----------------------------------------
+6. AUDITORIA Y TRAZABILIDAD
+----------------------------------------
+Proposito: Registrar quien hizo que y cuando.
+
+CAMPOS AUTOMATICOS DE ODOO (en todos los modelos):
+    create_uid   --> ID del usuario que creo el registro
+    create_date  --> Fecha/hora de creacion
+    write_uid    --> ID del ultimo usuario que modifico
+    write_date   --> Fecha/hora de ultima modificacion
+
+TRACKING CON CHATTER:
+    # En la definicion del modelo:
+    _inherit = ['mail.thread']
+
+    estado = fields.Selection(..., tracking=True)
+    responsable_id = fields.Many2one('res.users', tracking=True)
+
+    # Cada cambio en estos campos queda registrado en el chatter
+    # con quien cambio el valor, de que a que, y cuando.
+
+LOG MANUAL EN CHATTER:
+    self.message_post(
+        body='El pedido fue aprobado por %s' % self.env.user.name,
+        message_type='comment',
+        subtype_xmlid='mail.mt_note',
+    )
+
+----------------------------------------
+ERRORES COMUNES
+----------------------------------------
+[X] El menu se ocultó pero el usuario aun puede acceder via URL
+    Causa:    groups en menuitem solo oculta visualmente. No es seguridad real.
+    Solucion: Combinar con Record Rules y ACL para bloquear el acceso real.
+
+[X] has_group() retorna True para el administrador aunque no este en el grupo
+    Causa:    El usuario administrador (base.group_system) pasa TODOS los
+              checks de has_group() por defecto.
+    Solucion: Es el comportamiento correcto. El admin siempre tiene acceso total.
+
+[X] El campo con groups= en Python no aparece en la API externa
+    Causa:    Correcto. El campo no se expone ni via RPC ni via ORM para
+              usuarios fuera del grupo.
+    Solucion: Si necesitas el campo en la API para ese usuario, ajusta el grupo.
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. SEGURIDAD EN CAPAS: Combina ACL (modelo) + Record Rules (registro)
+   + groups en campos (campo). Las tres capas juntas = seguridad robusta.
+
+2. NO DEPENDAS SOLO DE LA UI: Ocultar un boton o menu no es seguridad.
+   Un usuario tecnico puede llamar al metodo por RPC directamente.
+   Valida permisos en el codigo Python del metodo.
+
+3. ACCESSERROR VS USERERROR: AccessError para permisos denegados.
+   UserError para logica de negocio incorrecta. Usa el correcto.
+
+4. TRACKING EN CAMPOS CLAVE: Activa tracking=True en campos criticos
+   (estado, aprobado_por, monto, responsable) para auditoria completa.
+
+5. ADMIN SIEMPRE ACCEDE: No uses has_group() para bloquear al admin.
+   Es el comportamiento esperado en Odoo. El admin es el superusuario.
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-security.txt  --> ACL con ir.model.access.csv
+  notas-rules.txt     --> Record Rules con ir.rule
+  notas-views.txt     --> groups y invisible en vistas XML
 
 ========================================

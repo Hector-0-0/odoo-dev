@@ -1,77 +1,273 @@
 ========================================
-    GUÍA MAESTRA: RECORD RULES (XML)
+  GUIA: VISTAS XML EN ODOO
+========================================
+  SECCION : 05_Interfaz_de_Usuario_Backend
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-views.txt
 ========================================
 
 ----------------------------------------
-DESCRIPCIÓN TÉCNICA
+DESCRIPCION TECNICA
 ----------------------------------------
-Las Record Rules (ir.rule) son filtros dinámicos que se aplican a 
-nivel de SQL (cláusula WHERE) para restringir qué registros puede 
-ver o modificar un usuario según una lógica de negocio.
+Las vistas en Odoo definen como se presenta la informacion al usuario
+en la interfaz backend. Se definen en archivos XML y se almacenan en
+el modelo ir.ui.view. Odoo 18 soporta los tipos: Form, List (Tree),
+Search, Kanban, Pivot, Graph, Calendar y Activity.
 
 ----------------------------------------
-ESTRUCTURA DE UNA REGLA (XML)
+1. VISTA FORM (Formulario)
 ----------------------------------------
-Ubicación recomendada: security/hospital_security.xml
+Proposito: Ver y editar un registro individual.
 
-<record id="rule_paciente_personal" model="ir.rule">
-    <field name="name">Pacientes Propios</field>
-    <field name="model_id" ref="model_hospital_paciente"/>
-    <field name="groups" eval="[(4, ref('hospital.group_doctor'))]"/>
-    <field name="domain_force">[('doctor_id', '=', user.id)]</field>
-    <field name="perm_read" eval="True"/>
-    <field name="perm_write" eval="True"/>
-    <field name="perm_create" eval="True"/>
-    <field name="perm_unlink" eval="False"/>
-</record>
+ESTRUCTURA COMPLETA:
+    <record id="view_hospital_patient_form" model="ir.ui.view">
+        <field name="name">hospital.patient.form</field>
+        <field name="model">hospital.patient</field>
+        <field name="arch" type="xml">
+            <form string="Paciente">
+
+                <!-- BARRA DE ESTADO (estados del registro) -->
+                <header>
+                    <button name="action_confirmar" string="Confirmar"
+                            type="object" class="btn-primary"
+                            invisible="state != 'borrador'"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="borrador,confirmado,alta"/>
+                </header>
+
+                <!-- HOJA PRINCIPAL -->
+                <sheet>
+                    <!-- IMAGEN Y TITULO -->
+                    <div class="oe_title">
+                        <h1><field name="name" placeholder="Nombre del paciente"/></h1>
+                    </div>
+
+                    <!-- GRUPOS DE CAMPOS -->
+                    <group>
+                        <group string="Informacion Personal">
+                            <field name="fecha_nacimiento"/>
+                            <field name="genero"/>
+                            <field name="dni"/>
+                        </group>
+                        <group string="Informacion Medica">
+                            <field name="doctor_id"/>
+                            <field name="tipo_sangre"/>
+                        </group>
+                    </group>
+
+                    <!-- PESTAÑAS (notebook) -->
+                    <notebook>
+                        <page string="Historial" name="historial">
+                            <field name="historial_ids">
+                                <list>
+                                    <field name="fecha"/>
+                                    <field name="diagnostico"/>
+                                    <field name="doctor_id"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Notas" name="notas">
+                            <field name="notas" nolabel="1"/>
+                        </page>
+                    </notebook>
+                </sheet>
+
+                <!-- CHATTER (mensajes y actividades) -->
+                <chatter/>
+
+            </form>
+        </field>
+    </record>
+
+ELEMENTOS CLAVE DEL FORM:
+  <header>     --> Barra superior con botones de accion y statusbar.
+  <sheet>      --> Contenedor principal del formulario.
+  <group>      --> Agrupa campos en columnas (2 columnas por defecto).
+  <notebook>   --> Pestanas de contenido adicional.
+  <page>       --> Cada pestana dentro del notebook.
+  <chatter/>   --> Widget de mensajes, actividades y tracking.
+  <div class="oe_title"> --> Titulo destacado del registro.
 
 ----------------------------------------
-COMPONENTES CLAVE
+2. VISTA LIST / TREE (Lista)
 ----------------------------------------
-model_id     --> Referencia al modelo (con prefijo model_).
-groups       --> Grupos a los que aplica la regla. Si está vacío, 
-                 se considera una "Global Rule".
-domain_force --> El filtro que restringe los datos.
-                 'user' es una variable disponible (usuario actual).
-perm_...     --> Define si la restricción aplica para Leer, Escribir, 
-                 Crear o Eliminar.
+Proposito: Ver multiples registros en formato tabla. Permite seleccion y acciones masivas.
+
+    <record id="view_hospital_patient_list" model="ir.ui.view">
+        <field name="name">hospital.patient.list</field>
+        <field name="model">hospital.patient</field>
+        <field name="arch" type="xml">
+            <list string="Pacientes"
+                  decoration-danger="state == 'critico'"
+                  decoration-warning="state == 'observacion'"
+                  decoration-muted="activo == False">
+                <field name="name"/>
+                <field name="doctor_id"/>
+                <field name="fecha_ingreso"/>
+                <field name="state"
+                       widget="badge"
+                       decoration-success="state == 'alta'"
+                       decoration-warning="state == 'observacion'"
+                       decoration-danger="state == 'critico'"/>
+                <field name="monto_total" sum="Total"/>
+            </list>
+        </field>
+    </record>
+
+ATRIBUTOS DE LIST:
+  decoration-danger/warning/success/muted --> Colorea filas segun condicion.
+  editable="bottom" o "top" --> Permite editar filas directamente sin abrir form.
+  default_order               --> Orden por defecto de la lista.
+
+ATRIBUTOS DE FIELD EN LIST:
+  sum / avg / min / max   --> Muestra agregado al pie de la columna.
+  widget="badge"          --> Muestra el valor como etiqueta de color.
+  optional="hide"         --> La columna es opcional (el usuario puede ocultarla).
 
 ----------------------------------------
-GLOBAL RULES VS GROUP RULES
+3. VISTA SEARCH (Busqueda)
 ----------------------------------------
-1. Global Rules (Sin grupos asignados):
-   - Se aplican a TODOS los usuarios (incluyendo Admin).
-   - Se combinan usando el operador lógico AND.
-   - Si una regla global restringe algo, nadie lo ve.
+Proposito: Define los filtros, agrupaciones y busqueda por defecto
+           que aparecen en la barra de busqueda de las vistas lista/kanban.
 
-2. Group Rules (Asociadas a un grupo):
-   - Se aplican solo a los miembros de ese grupo.
-   - Se combinan entre sí usando el operador lógico OR.
-   - Si perteneces a dos grupos y uno te da acceso, TIENES acceso.
+    <record id="view_hospital_patient_search" model="ir.ui.view">
+        <field name="name">hospital.patient.search</field>
+        <field name="model">hospital.patient</field>
+        <field name="arch" type="xml">
+            <search string="Buscar Pacientes">
+
+                <!-- CAMPOS DE BUSQUEDA LIBRE -->
+                <field name="name" string="Nombre o DNI"
+                       filter_domain="['|', ('name', 'ilike', self), ('dni', 'ilike', self)]"/>
+                <field name="doctor_id"/>
+
+                <!-- FILTROS PREDEFINIDOS -->
+                <filter string="Activos" name="activos"
+                        domain="[('activo', '=', True)]"/>
+                <filter string="En Observacion" name="en_observacion"
+                        domain="[('state', '=', 'observacion')]"/>
+                <filter string="Ingresados Hoy" name="hoy"
+                        domain="[('fecha_ingreso', '=', context_today().strftime('%Y-%m-%d'))]"/>
+
+                <!-- SEPARADOR VISUAL -->
+                <separator/>
+
+                <!-- AGRUPACIONES -->
+                <group expand="0" string="Agrupar por">
+                    <filter string="Doctor" name="by_doctor"
+                            context="{'group_by': 'doctor_id'}"/>
+                    <filter string="Estado" name="by_state"
+                            context="{'group_by': 'state'}"/>
+                    <filter string="Fecha de Ingreso" name="by_fecha"
+                            context="{'group_by': 'fecha_ingreso:month'}"/>
+                </group>
+
+                <!-- BUSQUEDA POR DEFECTO AL ABRIR LA VISTA -->
+                <searchpanel>
+                    <field name="doctor_id" string="Doctor" icon="fa-user-md"/>
+                    <field name="state" string="Estado" select="multi"/>
+                </searchpanel>
+
+            </search>
+        </field>
+    </record>
 
 ----------------------------------------
-REGLAS DE ORO DEL EXPERTO
+4. VISTA KANBAN
 ----------------------------------------
-1. MULTI-COMPANY: Odoo usa Record Rules para separar datos entre 
-   compañías. El dominio estándar es:
-   ['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]
+Proposito: Vista de tarjetas agrupadas por estado. Ideal para workflows.
 
-2. EVITAR REGLAS GLOBALES RESTRICTIVAS: Son difíciles de debugear. 
-   Es preferible asignar reglas a grupos específicos.
-
-3. EL USUARIO ADMIN: Por defecto, el administrador del sistema 
-   (ID 1) se salta la mayoría de las reglas, excepto las Globales 
-   si están mal configuradas.
-
-4. RENDIMIENTO: No uses métodos pesados en el domain_force. Odoo 
-   ejecuta este dominio en cada consulta SQL al modelo.
+    <record id="view_hospital_patient_kanban" model="ir.ui.view">
+        <field name="name">hospital.patient.kanban</field>
+        <field name="model">hospital.patient</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="state" class="o_kanban_small_column">
+                <field name="name"/>
+                <field name="state"/>
+                <field name="doctor_id"/>
+                <field name="color"/>
+                <templates>
+                    <t t-name="card">
+                        <div t-attf-class="oe_kanban_color_#{record.color.raw_value}">
+                            <div class="oe_kanban_top_left">
+                                <field name="name" class="o_kanban_record_title"/>
+                            </div>
+                            <div class="oe_kanban_bottom_left">
+                                <field name="doctor_id" widget="many2one_avatar_user"/>
+                            </div>
+                            <div class="oe_kanban_bottom_right">
+                                <field name="state" widget="badge"/>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
 
 ----------------------------------------
-OPERADORES ESPECIALES EN DOMINIOS
+5. HERENCIA DE VISTAS
 ----------------------------------------
-- 'user.id': ID del usuario actual.
-- 'user.partner_id': Registro de contacto del usuario.
-- 'company_id': ID de la compañía actual del usuario.
-- 'company_ids': Lista de todas las compañías permitidas al usuario.
+Ver notas-inheritance.txt seccion "Herencia de Vistas (XML)" para
+la documentacion completa. Resumen:
+
+    <record id="view_sale_order_form_inherit_mi_modulo" model="ir.ui.view">
+        <field name="name">sale.order.form.inherit.mi_modulo</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <field name="partner_id" position="after">
+                <field name="mi_campo_personalizado"/>
+            </field>
+        </field>
+    </record>
+
+----------------------------------------
+ERRORES COMUNES
+----------------------------------------
+[X] Vista no aparece o muestra error al abrir
+    Causa:    Error de XML (tag sin cerrar, atributo mal escrito).
+    Solucion: Revisar el log del servidor. Ir a Ajustes > Tecnico > Vistas
+              y buscar la vista para ver el error exacto.
+
+[X] El campo invisible no reacciona en tiempo real
+    Causa:    Se usa 'attrs' (deprecado) en lugar del atributo directo.
+    Solucion: Usar invisible="condicion_python" directamente en el tag.
+
+[X] El chatter no aparece en el formulario
+    Causa:    El modelo no hereda de mail.thread.
+    Solucion: Agregar _inherit = ['mail.thread', 'mail.activity.mixin']
+              en el modelo Python y actualizar el modulo.
+
+[X] decoration-danger en lista no colorea las filas
+    Causa:    El campo referenciado en la condicion no esta declarado
+              en la lista (aunque sea invisible).
+    Solucion: Agregar el campo a la lista con invisible="True" o column_invisible="True".
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. NOMBRE DE VISTA: Sigue el patron 'modelo.tipo_vista'.
+   Ejemplo: 'hospital.patient.form', 'sale.order.list'
+
+2. CHATTER EN TODOS LOS FORMS: Si el modelo hereda de mail.thread,
+   agrega <chatter/> al final del form. Es esperado por los usuarios.
+
+3. INVISIBLE VS COLUMN_INVISIBLE: En listas, usa column_invisible="True"
+   para ocultar la columna completa. invisible="True" oculta solo la celda.
+
+4. STATUSBAR VISIBLE: En el widget statusbar, usa statusbar_visible
+   para mostrar solo los estados principales del flujo, no todos.
+
+5. SEPARAR MENUS DE VISTAS: Define los menus en un archivo menus.xml
+   separado de los archivos de vistas. Facilita el mantenimiento.
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-actions.txt     --> Actions que abren las vistas
+  notas-menus.txt       --> Menus que invocan las actions
+  notas-inheritance.txt --> Como heredar vistas existentes
+  notas-widgets.txt     --> Widgets especiales para campos
 
 ========================================

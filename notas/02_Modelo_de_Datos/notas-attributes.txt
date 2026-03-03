@@ -1,76 +1,204 @@
 ========================================
-     GUÍA MAESTRA: ATRIBUTOS DE CAMPOS
+  GUIA: ATRIBUTOS AVANZADOS DE CAMPOS
+========================================
+  SECCION : 02_Modelo_de_Datos
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-attributes.txt
 ========================================
 
 ----------------------------------------
-DESCRIPCIÓN TÉCNICA
+DESCRIPCION TECNICA
 ----------------------------------------
-Los atributos son argumentos opcionales que se pasan al definir un 
-campo. Controlan tres niveles: Base de Datos (SQL), Lógica (ORM) 
-y Presentación (Interfaz de Usuario).
+Los atributos de campos controlan el comportamiento de los campos
+tanto en la capa de datos (BD, ORM) como en la capa de presentacion
+(vistas, formularios). Algunos son exclusivos de la definicion del
+campo en Python; otros se usan en las vistas XML para controlar
+visibilidad, obligatoriedad y editabilidad de forma dinamica.
 
 ----------------------------------------
-1. ATRIBUTOS DE BASE DE DATOS (SQL)
+1. ATRIBUTOS DE COMPORTAMIENTO (EN PYTHON)
 ----------------------------------------
-required=True  --> Crea una restricción "NOT NULL" en PostgreSQL.
-index=True     --> Crea un índice B-Tree. Acelera búsquedas y filtros.
-default        --> Valor inicial. Puede ser un valor o una función.
-                 Ej: default=lambda self: self.env.user
-translate=True --> Permite guardar valores distintos por cada idioma.
+
+required    --> El campo no puede ser nulo. Odoo valida antes de guardar.
+    name = fields.Char(required=True)
+
+default     --> Valor por defecto al crear un nuevo registro.
+    estado  = fields.Selection(..., default='borrador')
+    usuario = fields.Many2one('res.users', default=lambda self: self.env.user)
+    fecha   = fields.Date(default=fields.Date.today)
+
+copy        --> Si se copia el campo al duplicar el registro.
+    secuencia = fields.Char(copy=False)   --> Se omite al duplicar
+
+index       --> Crea un indice SQL en la columna. Acelera busquedas.
+    referencia = fields.Char(index=True)
+    ATENCION: No indexar campos que cambian mucho. Degrada escrituras.
+
+tracking    --> Registra los cambios del campo en el chatter.
+               Solo funciona si el modelo hereda de mail.thread.
+    estado = fields.Selection(..., tracking=True)
+
+store       --> Para campos compute: si True, guarda en BD.
+    total = fields.Float(compute='_compute_total', store=True)
+
+readonly    --> Campo no editable en la UI (pero si desde el ORM/codigo).
+    referencia = fields.Char(readonly=True)
+
+groups      --> Restringe visibilidad del campo a grupos XML especificos.
+    salario = fields.Float(groups='hr.group_hr_manager')
+
+translate   --> El contenido del campo es traducible a otros idiomas.
+    descripcion = fields.Char(translate=True)
 
 ----------------------------------------
-2. ATRIBUTOS DE LÓGICA Y COMPORTAMIENTO
+2. ATRIBUTOS DINAMICOS EN VISTAS XML (ODOO 18)
 ----------------------------------------
-readonly=True  --> El campo no es editable (solo lectura).
-copy=False     --> El valor no se duplica al usar el botón "Duplicar".
-                 Vital para IDs únicos, números de serie o estados.
-tracking=True  --> Registra cada cambio en el chatter (Log de auditoría).
-                 Requiere heredar 'mail.thread'.
-groups         --> Restringe el acceso al campo a grupos específicos.
-                 Ej: groups="base.group_system"
+Proposito: Controlar visibilidad, obligatoriedad y editabilidad
+           de campos segun condiciones en tiempo real.
+
+NOTA IMPORTANTE ODOO 17+/18:
+  El atributo 'attrs' fue DEPRECADO. Ahora se usan directamente
+  los atributos: invisible, required, readonly con expresiones de dominio.
+
+INVISIBLE (ocultar campo segun condicion):
+    <!-- Ocultar campo si estado es 'cancelado' -->
+    <field name="fecha_entrega" invisible="estado == 'cancelado'"/>
+
+    <!-- Ocultar si el usuario NO es del grupo ventas -->
+    <field name="descuento" invisible="not user_has_groups('sales_team.group_sale_salesman')"/>
+
+REQUIRED (obligatorio segun condicion):
+    <!-- Obligatorio solo si tipo es 'credito' -->
+    <field name="limite_credito" required="tipo_pago == 'credito'"/>
+
+READONLY (solo lectura segun condicion):
+    <!-- No editable si ya esta confirmado -->
+    <field name="partner_id" readonly="estado in ('confirmado', 'cancelado')"/>
+
+COLUMN_INVISIBLE (ocultar columna en vistas lista/tree):
+    <field name="campo_interno" column_invisible="True"/>
 
 ----------------------------------------
-3. ATRIBUTOS DE CAMPOS COMPUTADOS
+3. ATRIBUTOS DE CAMPO BINARY / IMAGE
 ----------------------------------------
-compute        --> Nombre del método que calcula el valor (string).
-inverse        --> Método que permite editar un campo computado y 
-                 actualizar los campos de los que depende.
-search         --> Método que permite buscar en campos computados 
-                 que no están almacenados (store=False).
-store=True     --> Obliga a guardar el resultado en la base de datos.
-                 Sin esto, el cálculo se hace "al vuelo" cada vez.
+
+attachment  --> Almacena el archivo en filestore (disco), no en BD.
+               Obligatorio para archivos grandes. Default: False.
+    documento = fields.Binary('PDF', attachment=True)
+
+max_width / max_height --> Para campos Image: redimensiona al guardar.
+    foto = fields.Image(max_width=256, max_height=256)
 
 ----------------------------------------
-4. ATRIBUTOS DE RELACIONES (MANY2ONE)
+4. ATRIBUTOS DE CAMPO CHAR / TEXT
 ----------------------------------------
-ondelete       --> Define qué pasa si se borra el registro relacionado.
-                 Valores: 'cascade', 'set null', 'restrict'.
-domain         --> Filtro dinámico para los registros seleccionables.
-                 Ej: domain=[('is_company', '=', True)]
-context        --> Envía datos extra al abrir la vista del registro vinculado.
+
+size        --> Longitud maxima del VARCHAR en BD. Default: ilimitado.
+    codigo = fields.Char(size=10)
+
+trim        --> Si es True (default), elimina espacios al inicio/fin.
+    nombre = fields.Char(trim=True)
 
 ----------------------------------------
-REGLAS DE ORO DEL EXPERTO
+5. ATRIBUTOS DE CAMPO FLOAT / MONETARY
 ----------------------------------------
-1. USO DE INDEX: No indexar todo. Solo campos que uses frecuentemente
-   en filtros (Search views) o en dominios de búsqueda del ORM.
 
-2. STRING: El primer argumento de un campo siempre es el 'string' 
-   (la etiqueta visible). Si no se pone, Odoo usa el nombre técnico.
-   Correcto: name = fields.Char("Nombre")
+digits      --> Tupla (precision_total, decimales).
+    precio = fields.Float(digits=(16, 4))
 
-3. HELP: Siempre añade help="Breve explicación" en campos complejos.
-   Esto genera un tooltip cuando el usuario pasa el ratón por encima.
+    Con precision dinamica (referencia a ir.decimal.precision):
+    precio = fields.Float(digits='Product Price')
 
-4. REQUIRED EN BOOLEAN: Un campo Boolean NUNCA debe ser required=True,
-   ya que False (desmarcado) es un valor válido.
+currency_field --> Para Monetary: nombre del campo Many2one a res.currency.
+    monto = fields.Monetary(currency_field='currency_id')
 
 ----------------------------------------
-ATRIBUTOS EXCLUSIVOS DE v17/18
+6. ATRIBUTOS DE CAMPO SELECTION
 ----------------------------------------
-- precompute=True: Permite que el campo computado se calcule antes 
-  de que el registro se guarde en la DB (útil para flujos web).
-- recursive=True: Para campos computados que se llaman a sí mismos
-  en estructuras de árbol (ej: categorías padre/hijo).
+
+selection_add --> Para herencia: agrega opciones a un Selection existente.
+    class MiModelo(models.Model):
+        _inherit = 'sale.order'
+        estado = fields.Selection(
+            selection_add=[('aprobado', 'Aprobado')],
+            ondelete={'aprobado': 'set default'}
+        )
+
+ondelete    --> Que hacer con registros que tienen el valor si se elimina
+               la opcion (al desinstalar el modulo). Requerido con selection_add.
+    ondelete={'aprobado': 'cascade'}   # Elimina el registro
+    ondelete={'aprobado': 'set null'}  # Pone el campo en null
+    ondelete={'aprobado': 'set default'} # Pone el valor por defecto
+
+----------------------------------------
+7. ATRIBUTOS DE CAMPOS RELACIONALES
+----------------------------------------
+
+ondelete (Many2one) --> Comportamiento al eliminar el registro padre.
+    'restrict'  --> Impide eliminar el padre si tiene hijos. (MAS SEGURO)
+    'cascade'   --> Elimina el hijo si se elimina el padre.
+    'set null'  --> Pone el campo en null si se elimina el padre.
+
+domain      --> Filtra los registros disponibles en un Many2one.
+    partner_id = fields.Many2one(
+        'res.partner',
+        domain=[('customer_rank', '>', 0)]   # Solo clientes
+    )
+
+    Dominio dinamico (evalua en tiempo real):
+    partner_id = fields.Many2one(
+        'res.partner',
+        domain="[('company_id', '=', company_id)]"
+    )
+
+context     --> Contexto que se pasa al abrir el formulario del Many2one.
+    partner_id = fields.Many2one('res.partner', context={'default_type': 'contact'})
+
+----------------------------------------
+ERRORES COMUNES
+----------------------------------------
+[X] El campo invisible/required no reacciona a cambios en la UI
+    Causa:    Se esta usando 'attrs' (deprecado en Odoo 17+/18).
+    Solucion: Usar directamente invisible="condicion" en el tag <field>.
+
+[X] El campo translate=True no muestra traducciones en produccion
+    Causa:    No se han instalado los idiomas o no se ha traducido el valor.
+    Solucion: Instalar idioma en Ajustes y usar el bot de traduccion.
+
+[X] index=True no mejora el rendimiento de busqueda
+    Causa:    El campo tiene baja cardinalidad (pocos valores distintos,
+              ej: un Boolean). Los indices no ayudan en esos casos.
+    Solucion: Indexar campos de alta cardinalidad como Char, Many2one IDs.
+
+[X] El dominio en Many2one no funciona correctamente
+    Causa:    Si el dominio referencia otro campo del formulario, debe
+              ir como string entre comillas, no como lista Python.
+    Solucion: domain="[('company_id', '=', company_id)]"  (string)
+              No: domain=[('company_id', '=', ???)]       (no puede ser dinamico en lista)
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. ATTRS DEPRECADO: En Odoo 17+/18 NUNCA uses 'attrs'. Usa invisible,
+   required y readonly directamente con expresiones Python en XML.
+
+2. INDEX CON CRITERIO: Solo indexa campos que se usan frecuentemente
+   en busquedas (domain/search). No indexes todos los campos.
+
+3. COPY=FALSE EN SECUENCIAS: Siempre pon copy=False en campos de
+   numero de secuencia o referencia unica para evitar duplicados.
+
+4. TRACKING EN CAMPOS CLAVE: Activa tracking=True en campos de
+   estado, responsable y fechas clave para trazabilidad en chatter.
+
+5. DOMAIN COMO STRING: Cuando el dominio de un Many2one referencia
+   otro campo del mismo formulario, usa string, no lista Python.
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-fields.txt  --> Tipos de campos y su definicion basica
+  notas-views.txt   --> Como usar atributos dinamicos en XML
+  notas-orm.txt     --> Como filtrar con dominios en codigo Python
 
 ========================================

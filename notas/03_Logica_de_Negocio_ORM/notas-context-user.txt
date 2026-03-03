@@ -1,85 +1,206 @@
 ========================================
-   GUÍA MAESTRA: CONTEXTO Y PRIVILEGIOS
+  GUIA: CONTEXTO, USUARIO Y SUDO
+========================================
+  SECCION : 03_Logica_de_Negocio_ORM
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-context-user.txt
 ========================================
 
 ----------------------------------------
-DESCRIPCIÓN TÉCNICA
+DESCRIPCION TECNICA
 ----------------------------------------
-El 'Environment' (self.env) de Odoo es inmutable. Para cambiar el 
-usuario, el idioma o el contexto, se deben usar métodos que crean 
-una nueva instancia del entorno con las modificaciones deseadas.
+Odoo gestiona toda operacion dentro de un "entorno" (Environment) que
+contiene el usuario activo, el contexto (diccionario de configuracion
+temporal) y el cursor de BD. Entender como manipular este entorno es
+clave para controlar permisos, comportamiento de la UI, idioma,
+compania activa y efectos secundarios como emails y notificaciones.
 
 ----------------------------------------
-1. MANEJO DEL CONTEXTO (with_context)
+1. EL ENTORNO: self.env
 ----------------------------------------
-El context es un diccionario que viaja en toda la ejecución. Se usa 
-para pasar valores por defecto o banderas lógicas.
+
+self.env                 --> Entorno actual del metodo
+self.env.user            --> Registro res.users del usuario activo
+self.env.uid             --> ID del usuario activo (int)
+self.env.company         --> Compania activa (res.company)
+self.env.companies       --> Todas las companias activas del usuario
+self.env.lang            --> Codigo de idioma activo ('es_PE', 'en_US')
+self.env.context         --> Diccionario de contexto actual (inmutable)
+self.env.cr              --> Cursor de base de datos activo
+self.env['modelo']       --> Acceder a cualquier modelo por nombre tecnico
+self.env.ref('xml_id')   --> Obtener un registro por su XML ID
+
+EJEMPLOS:
+    usuario_actual = self.env.user
+    nombre_usuario = self.env.user.name
+    es_admin = self.env.user.has_group('base.group_system')
+    compania_id = self.env.company.id
+
+----------------------------------------
+2. with_context() - MODIFICAR EL CONTEXTO
+----------------------------------------
+Proposito: Ejecutar operaciones con un contexto temporal modificado.
+           No modifica el contexto global, solo el de esa operacion.
 
 SINTAXIS:
-# Ejemplo: Pasar un valor por defecto al crear un registro
-new_env = self.with_context(default_partner_id=self.id)
+    recordset_con_contexto = recordset.with_context(clave=valor)
+    recordset_con_contexto = recordset.with_context({'clave': valor})
 
-# Ejemplo: Usar una bandera personalizada para saltar una validación
-if self.env.context.get('skip_check'):
-    return True
+USOS MAS COMUNES:
+
+Deshabilitar tracking del chatter:
+    self.with_context(mail_notrack=True).write({'state': 'done'})
+
+Deshabilitar TODOS los efectos de mail:
+    self.with_context(tracking_disable=True).write({'state': 'done'})
+
+Forzar idioma para traducciones:
+    partner_en = partner.with_context(lang='en_US')
+    print(partner_en.country_id.name)   --> 'Peru' en ingles
+
+Pasar datos por defecto a un formulario nuevo:
+    return {
+        'type'   : 'ir.actions.act_window',
+        'res_model': 'sale.order',
+        'view_mode': 'form',
+        'context': {
+            'default_partner_id': self.partner_id.id,
+            'default_company_id': self.env.company.id,
+        }
+    }
+
+Forzar compania activa:
+    en_otra_compania = self.with_context(
+        allowed_company_ids=[otra_compania.id]
+    )
+
+CLAVES DE CONTEXTO COMUNES EN ODOO:
+  mail_notrack          --> No registra cambios en chatter
+  tracking_disable      --> Deshabilita todo el sistema de tracking
+  no_recompute          --> No recalcula campos compute (peligroso)
+  lang                  --> Idioma para traducciones
+  default_campo         --> Valor por defecto para campo en formulario nuevo
+  active_id             --> ID del registro activo (usado por wizards)
+  active_ids            --> Lista de IDs seleccionados
+  active_model          --> Modelo del registro activo
 
 ----------------------------------------
-2. ELEVACIÓN DE PRIVILEGIOS (sudo)
+3. sudo() - ELEVAR PERMISOS
 ----------------------------------------
-Propósito: Ejecutar una acción saltándose las reglas de acceso (ACL) 
-y las reglas de registro (ir.rule).
+Proposito: Ejecutar operaciones como superusuario (sin restricciones
+           de seguridad: ACLs ni record rules).
 
 SINTAXIS:
-# Ejecuta el método con privilegios de Administrador (ID 1 por defecto)
-self.sudo().write({'state': 'confirmed'})
+    self.sudo()                          --> Sudo como admin (uid=1)
+    self.sudo(user)                      --> Sudo como otro usuario especifico
 
-# IMPORTANTE: sudo() devuelve un nuevo recordset. No modifica el actual.
-records_as_admin = self.sudo()
+CASOS DE USO VALIDOS:
+    # Leer un parametro del sistema (inaccessible para usuarios normales)
+    param = self.env['ir.config_parameter'].sudo().get_param('mi.clave')
+
+    # Crear un registro en un modelo al que el usuario no tiene acceso directo
+    log = self.env['mi.log.interno'].sudo().create({
+        'user_id': self.env.uid,
+        'accion' : 'Confirmo pedido',
+    })
+
+    # Acceder a datos de otra compania en un entorno multi-compania
+    todas_facturas = self.env['account.move'].sudo().search([
+        ('move_type', '=', 'out_invoice')
+    ])
+
+ADVERTENCIA: sudo() desactiva TODAS las reglas de seguridad.
+Usarlo sin criterio es un riesgo de seguridad. Documenta siempre por que se usa.
+
+REGLA: Usa sudo() para la operacion minima necesaria, no para todo el metodo.
+    CORRECTO:
+        param = self.env['ir.config_parameter'].sudo().get_param('clave')
+
+    INCORRECTO:
+        self = self.sudo()    # No hagas esto: eleva todo el contexto del metodo
 
 ----------------------------------------
-3. CAMBIO DE USUARIO (with_user)
+4. with_user() - CAMBIAR USUARIO ACTIVO
 ----------------------------------------
-Propósito: Ejecutar código como si fuera un usuario específico. Útil 
-para auditorías o para probar permisos de grupos.
+Proposito: Ejecutar operaciones como si fuera otro usuario especifico.
+           A diferencia de sudo(), respeta las reglas de ese usuario.
 
 SINTAXIS:
-# Cambia el entorno al usuario con ID 5
-self.with_user(5).action_confirm()
+    recordset_como_usuario = recordset.with_user(user_id)
+
+EJEMPLO:
+    usuario_vendedor = self.env.ref('base.user_demo')
+    pedidos_del_vendedor = self.env['sale.order'].with_user(usuario_vendedor).search([
+        ('state', '=', 'draft')
+    ])
+    # Solo ve los pedidos a los que ese usuario tiene acceso
+
+USO TIPICO: Tests, simulacion de permisos, auditorias.
 
 ----------------------------------------
-4. CAMBIO DE COMPAÑÍA (with_company)
+5. with_company() - CAMBIAR COMPANIA ACTIVA
 ----------------------------------------
-Vital en entornos multi-compañía (Multi-company). Asegura que los 
-cálculos de inventario o contabilidad usen la moneda y reglas de la 
-compañía indicada.
+Proposito: Ejecutar operaciones en el contexto de otra compania.
+           Util en entornos multi-compania.
 
 SINTAXIS:
-self.with_company(company_id)._compute_totals()
+    recordset.with_company(company_id)
+
+EJEMPLO:
+    otra_compania = self.env['res.company'].browse(2)
+    self.env['res.partner'].with_company(otra_compania).create({
+        'name': 'Proveedor de Compania 2',
+    })
 
 ----------------------------------------
-REGLAS DE ORO DEL EXPERTO
+ERRORES COMUNES
 ----------------------------------------
-1. EL PELIGRO DE SUDO(): Úsalo solo cuando sea estrictamente necesario 
-   (ej: un usuario portal que necesita crear un registro en una tabla 
-   a la que no tiene acceso directo). El abuso de sudo() crea agujeros 
-   de seguridad masivos.
+[X] Los cambios en un campo no aparecen en el chatter aunque tracking=True
+    Causa:    Se uso with_context(mail_notrack=True) o tracking_disable=True.
+    Solucion: Verificar que no haya contexto que deshabilite el tracking
+              en la cadena de llamadas.
 
-2. ENCADENAMIENTO: Puedes encadenar modificaciones de entorno.
-   self.with_user(5).with_context(mail_create_nosubscribe=True).sudo()
+[X] sudo() causa que un cron afecte datos de companias que no deberia
+    Causa:    sudo() desactiva las record rules de multi-compania.
+    Solucion: Combinar with_company() con sudo() para limitar el alcance,
+              o agregar un dominio de compania al search().
 
-3. PERSISTENCIA: Recuerda que self.env.context es de SÓLO LECTURA. 
-   No puedes hacer: self.env.context['key'] = 'value'.
-   Debes usar: self = self.with_context(key='value').
+[X] El contexto con 'default_campo' no precarga el valor en el formulario
+    Causa:    El nombre del campo en 'default_campo' no coincide exactamente
+              con el nombre del campo en el modelo (typo).
+    Solucion: Verificar nombre exacto del campo. Es case-sensitive.
 
-4. EVITAR RE-BROWSE: Al usar sudo() o with_user(), el recordset 
-   devuelto apunta a la misma tabla pero con diferentes permisos.
+[X] with_context() modifica el contexto de toda la sesion
+    Causa:    Malentendido: with_context() NO modifica el contexto global.
+              Crea un entorno nuevo solo para esa cadena de operaciones.
+    Aclaracion: Es seguro usar with_context(). No tiene efectos secundarios
+                fuera de la operacion en la que se usa.
 
 ----------------------------------------
-USOS COMUNES EN v17/18
+REGLAS DE ORO
 ----------------------------------------
-- 'active_id': ID del registro desde el que se lanzó un Wizard.
-- 'active_model': Nombre del modelo de origen.
-- 'force_company': Forzar una compañía en cálculos contables.
-- 'lang': Cambiar el idioma de renderizado de un reporte PDF.
+1. SUDO() MINIMO: Aplica sudo() solo a la operacion que lo necesita,
+   no a todo el recordset ni al inicio del metodo.
+
+2. DOCUMENTA EL SUDO: Comenta siempre por que usas sudo().
+   "# sudo() porque el usuario portal no tiene acceso a ir.config_parameter"
+
+3. TRACKING_DISABLE PARA MASIVOS: En operaciones masivas (crons,
+   importaciones), usa with_context(tracking_disable=True) para
+   evitar miles de mensajes en el chatter y mejorar rendimiento.
+
+4. CONTEXT ES INMUTABLE: self.env.context es un dict de solo lectura.
+   Para modificarlo usa with_context(), nunca intentes modificarlo directamente.
+
+5. WITH_COMPANY EN MULTI-COMPANIA: En modulos para entornos multi-compania,
+   siempre usa with_company() al crear/leer registros que pertenecen
+   a una compania especifica.
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-orm.txt         --> Metodos CRUD que usan el entorno
+  notas-security.txt    --> Reglas de acceso que sudo() omite
+  notas-performance.txt --> tracking_disable para operaciones masivas
 
 ========================================

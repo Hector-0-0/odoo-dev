@@ -1,82 +1,234 @@
 ========================================
-      GUÍA MAESTRA: CAMPOS EN ODOO
+  GUIA: CAMPOS (FIELDS) EN ODOO
+========================================
+  SECCION : 02_Modelo_de_Datos
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-fields.txt
 ========================================
 
 ----------------------------------------
-DESCRIPCIÓN TÉCNICA
+DESCRIPCION TECNICA
 ----------------------------------------
-Los campos (fields) definen el tipo de dato que se almacenará en las 
-columnas de PostgreSQL. Se dividen en campos básicos, relacionales 
-y funcionales (computados).
-
-----------------------------------------
-1. CAMPOS BÁSICOS
-----------------------------------------
-Boolean      --> fields.Boolean() -> True/False (Checkbox)
-Integer      --> fields.Integer() -> Números enteros
-Float        --> fields.Float() -> Números decimales (ajustable por precisión)
-Monetary     --> fields.Monetary() -> Relacionado a una moneda (currency_id)
-Char         --> fields.Char() -> Texto corto (un renglón)
-Text         --> fields.Text() -> Texto largo (múltiples renglones)
-Html         --> fields.Html() -> Editor enriquecido (WYSIWYG)
-Date         --> fields.Date() -> Fecha (YYYY-MM-DD)
-Datetime     --> fields.Datetime() -> Fecha y hora (UTC por defecto)
-Selection    --> fields.Selection([('a', 'A'), ('b', 'B')]) -> Lista desplegable
-Binary       --> fields.Binary() -> Archivos (Imágenes, PDF)
+Los fields (campos) definen la estructura de datos de un modelo Odoo.
+Cada campo es un atributo de clase que el ORM mapea a una columna
+en PostgreSQL. Odoo gestiona automaticamente la creacion y migracion
+de columnas al actualizar el modulo.
 
 ----------------------------------------
-2. CAMPOS RELACIONALES (EL PODER DE ODOO)
+1. CAMPOS BASICOS (PRIMITIVOS)
 ----------------------------------------
-Many2one (N:1):
-   - Un registro de este modelo apunta a UN registro de otro.
-   - Crea una Foreign Key en la base de datos.
-   - partner_id = fields.Many2one('res.partner', string='Cliente')
 
-One2many (1:N):
-   - Relación inversa al Many2one. Muestra una lista de registros hijos.
-   - NO crea columna en DB, es una relación virtual basada en el Many2one.
-   - order_line_ids = fields.One2many('sale.order.line', 'order_id')
+Char        --> Texto corto. Almacena VARCHAR en la BD.
+    name = fields.Char(string='Nombre', required=True, size=100)
 
-Many2many (N:N):
-   - Muchos registros se relacionan con muchos registros.
-   - Crea una tabla intermedia automática en la base de datos.
-   - tag_ids = fields.Many2many('res.partner.category', string='Etiquetas')
+Text        --> Texto largo sin limite. Almacena TEXT en la BD.
+    descripcion = fields.Text('Descripcion')
 
-----------------------------------------
-3. CAMPOS COMPUTADOS (DINÁMICOS)
-----------------------------------------
-Campos que calculan su valor basándose en otros mediante una función.
+Integer     --> Numero entero. Almacena INT4 en la BD.
+    cantidad = fields.Integer('Cantidad', default=0)
 
-SINTAXIS:
-total = fields.Float(compute='_compute_total', store=True)
+Float       --> Numero decimal. Almacena FLOAT8 en la BD.
+    precio = fields.Float('Precio', digits=(16, 2))
 
-@api.depends('price', 'tax')
-def _compute_total(self):
-    for record in self:
-        record.total = record.price + record.tax
+Monetary    --> Como Float pero ligado a una moneda. Usa res.currency.
+    monto = fields.Monetary('Monto', currency_field='currency_id')
+    currency_id = fields.Many2one('res.currency', 'Moneda')
 
-----------------------------------------
-REGLAS DE ORO DEL EXPERTO
-----------------------------------------
-1. STORE=TRUE: Un campo computado NO es buscable ni filtrable en vistas 
-   a menos que uses 'store=True'. Esto lo guarda físicamente en DB.
+Boolean     --> True/False. Almacena BOOL en la BD.
+    activo = fields.Boolean('Activo', default=True)
 
-2. TRACKING=TRUE: Activa el log de cambios en el chatter. Vital para 
-   auditoría (requiere heredar 'mail.thread' en el modelo).
+Date        --> Fecha sin hora. Almacena DATE en la BD.
+    fecha_inicio = fields.Date('Fecha de Inicio')
 
-3. ON-DELETE: En Many2one, decide qué pasa si borras el padre.
-   - 'cascade': Borra también el hijo.
-   - 'set null': Deja el campo vacío.
-   - 'restrict': Impide borrar si hay registros vinculados.
+Datetime    --> Fecha con hora (UTC). Almacena TIMESTAMP en la BD.
+    fecha_hora = fields.Datetime('Fecha y Hora')
 
-4. SELECTION: Usa Selection para estados (states). Es más rápido que 
-   un modelo aparte si las opciones son fijas.
+Selection   --> Lista de opciones fijas.
+    estado = fields.Selection([
+        ('borrador', 'Borrador'),
+        ('confirmado', 'Confirmado'),
+        ('cancelado', 'Cancelado'),
+    ], string='Estado', default='borrador', required=True)
+
+Html        --> Contenido HTML enriquecido.
+    notas_html = fields.Html('Notas')
+
+Binary      --> Archivos binarios (imagenes, PDFs). Almacena BYTEA.
+    documento = fields.Binary('Documento', attachment=True)
+
+Image       --> Especializado para imagenes. Maneja redimensionado.
+    foto = fields.Image('Foto', max_width=256, max_height=256)
 
 ----------------------------------------
-DIFERENCIA ENTRE FLOAT Y MONETARY
+2. CAMPOS RELACIONALES
 ----------------------------------------
-- Float: Para medidas físicas (peso, volumen).
-- Monetary: Para dinero. Respeta automáticamente los decimales de la 
-  moneda configurada en la empresa y añade el símbolo en la vista.
+
+Many2one    --> Muchos registros apuntan a UNO. Clave foranea en BD.
+    partner_id = fields.Many2one(
+        comodel_name='res.partner',
+        string='Cliente',
+        required=True,
+        ondelete='restrict'     # restrict | cascade | set null
+    )
+
+One2many    --> UNO tiene MUCHOS. No crea columna. Es el inverso de Many2one.
+    lineas_ids = fields.One2many(
+        comodel_name='sale.order.line',
+        inverse_name='order_id',    # El campo Many2one en el modelo hijo
+        string='Lineas de Pedido'
+    )
+
+Many2many   --> MUCHOS a MUCHOS. Crea tabla intermedia en BD.
+    etiquetas_ids = fields.Many2many(
+        comodel_name='res.partner.category',
+        string='Etiquetas'
+    )
+
+    # Con tabla y columnas personalizadas:
+    etiquetas_ids = fields.Many2many(
+        comodel_name='res.partner.category',
+        relation='mi_modelo_category_rel',   # Nombre tabla intermedia
+        column1='modelo_id',
+        column2='category_id',
+        string='Etiquetas'
+    )
+
+----------------------------------------
+3. CAMPOS CALCULADOS (COMPUTE)
+----------------------------------------
+Proposito: Campo cuyo valor se calcula dinamicamente con Python.
+           No se almacena en la BD por defecto.
+
+EJEMPLO BASICO:
+    subtotal = fields.Float(
+        string='Subtotal',
+        compute='_compute_subtotal'
+    )
+
+    @api.depends('cantidad', 'precio_unitario')
+    def _compute_subtotal(self):
+        for record in self:
+            record.subtotal = record.cantidad * record.precio_unitario
+
+COMPUTE + STORE (guardar en BD):
+    subtotal = fields.Float(compute='_compute_subtotal', store=True)
+    # store=True: se recalcula y guarda cuando cambian los depends.
+    # Permite filtrar y ordenar por este campo en vistas.
+
+COMPUTE + INVERSE (campo editable):
+    precio_con_iva = fields.Float(
+        compute='_compute_precio_iva',
+        inverse='_inverse_precio_iva'
+    )
+
+    @api.depends('precio', 'iva')
+    def _compute_precio_iva(self):
+        for r in self:
+            r.precio_con_iva = r.precio * (1 + r.iva / 100)
+
+    def _inverse_precio_iva(self):
+        for r in self:
+            r.precio = r.precio_con_iva / (1 + r.iva / 100)
+
+----------------------------------------
+4. CAMPOS RELACIONADOS (RELATED)
+----------------------------------------
+Proposito: Exponer el campo de un modelo relacionado como si fuera propio.
+           Es un atajo que no requiere compute manual.
+
+EJEMPLO:
+    # En sale.order.line, exponer el nombre del cliente del pedido:
+    partner_name = fields.Char(
+        related='order_id.partner_id.name',
+        string='Nombre del Cliente',
+        store=True,      # Opcional: guardar en BD para filtrar
+        readonly=True
+    )
+
+REGLA: La cadena related sigue el patron 'campo.subcampo.campo_final'.
+       Cada parte debe ser un campo valido del modelo anterior.
+
+----------------------------------------
+5. ATRIBUTOS COMUNES DE CAMPOS
+----------------------------------------
+
+string      --> Etiqueta visible en la interfaz. Si no se pone,
+                Odoo genera una desde el nombre del atributo.
+required    --> Si es True, el campo no puede estar vacio. Default: False.
+readonly    --> Si es True, el campo no es editable en la UI. Default: False.
+default     --> Valor por defecto. Puede ser un valor o una funcion lambda.
+                default=0  |  default='borrador'  |  default=lambda self: self.env.user
+help        --> Tooltip de ayuda visible al pasar el cursor en la UI.
+copy        --> Si es False, el campo no se copia al duplicar el registro.
+tracking    --> Si es True (con mail.thread), registra cambios en el chatter.
+index       --> Si es True, crea un indice SQL para acelerar busquedas.
+groups      --> Restringe visibilidad a grupos XML.
+                groups='base.group_user'
+states      --> Modifica atributos segun el valor del campo 'state'.
+                DEPRECADO en Odoo 17+. Usar attrs o invisible con dominio.
+
+----------------------------------------
+ERRORES COMUNES
+----------------------------------------
+[X] "Field X.Y does not exist" en un campo related
+    Causa:    La cadena de related tiene un campo con typo o no existe.
+    Solucion: Verificar cada parte de la cadena campo a campo.
+
+[X] El campo compute no se actualiza al cambiar valores dependientes
+    Causa:    Falta el campo en @api.depends o el depends es incorrecto.
+    Solucion: Revisar la lista de @api.depends. Incluir TODOS los campos
+              que afectan el calculo, incluyendo subcampos (ej: 'linea_ids.precio').
+
+[X] "cannot ORDER BY column" en vista lista con campo compute
+    Causa:    El campo compute no tiene store=True, no existe en la BD.
+    Solucion: Agregar store=True al campo si se necesita ordenar/filtrar.
+
+[X] El campo Monetary muestra valores incorrectos
+    Causa:    Falta el campo currency_id en el modelo o no esta bien enlazado.
+    Solucion: Asegurar que el modelo tenga un campo Many2one a res.currency
+              y que currency_field apunte a el.
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. MONETARY vs FLOAT: Para dinero siempre usa Monetary, nunca Float.
+   Monetary maneja conversion de moneda automaticamente.
+
+2. STORE EN COMPUTE: Agrega store=True si necesitas filtrar, ordenar
+   o mostrar el campo en vistas lista con alto volumen de datos.
+
+3. API.DEPENDS COMPLETO: En @api.depends incluye TODOS los campos
+   que impactan el calculo. Si son campos de lineas O2M, usa notacion
+   con punto: @api.depends('linea_ids.precio', 'linea_ids.cantidad')
+
+4. ONDELETE EN MANY2ONE: Siempre define ondelete en campos Many2one
+   criticos. 'restrict' para proteger, 'cascade' para eliminar en cadena.
+
+5. ATTACHMENT EN BINARY: Para archivos grandes usa attachment=True
+   en campos Binary. Almacena el archivo en el filestore, no en la BD.
+
+----------------------------------------
+CUANDO USAR CADA CAMPO
+----------------------------------------
+  Texto corto (nombre, codigo)?         --> Char
+  Texto largo (descripcion, notas)?     --> Text o Html
+  Precio o importe en dinero?           --> Monetary (nunca Float)
+  Porcentaje o medida numerica?         --> Float con digits=(16,2)
+  Fecha de evento sin hora?             --> Date
+  Timestamp de auditoria?               --> Datetime
+  Estado o tipo de un registro?         --> Selection
+  Enlace a otro modelo (FK)?            --> Many2one
+  Lista de sub-registros (items)?       --> One2many
+  Lista de etiquetas/categorias?        --> Many2many
+  Valor calculado (no editable)?        --> compute sin inverse
+  Valor calculado (editable)?           --> compute + inverse
+  Campo de otro modelo expuesto?        --> related
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-models.txt      --> Donde se declaran los campos
+  notas-attributes.txt  --> Atributos avanzados de campos
+  notas-orm.txt         --> Como consultar por campos relacionales
 
 ========================================

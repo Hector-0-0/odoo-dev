@@ -1,0 +1,205 @@
+========================================
+  GUIA: ACTIONS EN ODOO
+========================================
+  SECCION : 05_Interfaz_de_Usuario_Backend
+  VERSION  : Odoo 18
+  ARCHIVO  : notas-actions.txt
+========================================
+
+----------------------------------------
+DESCRIPCION TECNICA
+----------------------------------------
+Las acciones (actions) en Odoo son el mecanismo que conecta menus,
+botones y eventos con lo que debe mostrarse o ejecutarse. Definen
+que ocurre cuando un usuario hace clic en un menu o un boton.
+Hay 4 tipos principales: Window, Server, Client y Report.
+
+----------------------------------------
+1. ir.actions.act_window (WINDOW ACTION)
+----------------------------------------
+Proposito: Abrir una vista (form, list, kanban, etc.) de un modelo.
+           Es el tipo de action mas comun.
+
+EJEMPLO COMPLETO EN XML:
+    <record id="action_hospital_patient" model="ir.actions.act_window">
+        <field name="name">Pacientes</field>
+        <field name="res_model">hospital.patient</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('activo', '=', True)]</field>
+        <field name="context">{'default_doctor_id': uid}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No hay pacientes registrados.
+            </p>
+            <p>Crea el primer paciente haciendo clic en Nuevo.</p>
+        </field>
+    </record>
+
+CAMPOS PRINCIPALES:
+  name       --> Titulo que aparece en el breadcrumb.
+  res_model  --> Modelo que se abre.
+  view_mode  --> Vistas disponibles separadas por coma.
+                 Orden importa: la primera es la vista por defecto.
+                 Opciones: list, form, kanban, pivot, graph, calendar, activity
+  domain     --> Filtro fijo aplicado siempre al abrir la accion.
+  context    --> Contexto pasado a la vista.
+                 'default_campo': valor --> Precarga campo en nuevo registro.
+  target     --> Donde se abre la vista.
+                 current (default): pagina principal
+                 new: popup/dialogo
+                 fullscreen: pantalla completa
+  res_id     --> Para abrir directamente un registro especifico.
+  view_id    --> Para forzar una vista especifica.
+
+ABRIR DESDE PYTHON:
+    def action_ver_pacientes(self):
+        return {
+            'type'     : 'ir.actions.act_window',
+            'name'     : 'Pacientes del Doctor',
+            'res_model': 'hospital.patient',
+            'view_mode': 'list,form',
+            'domain'   : [('doctor_id', '=', self.id)],
+            'context'  : {'default_doctor_id': self.id},
+        }
+
+ABRIR FORMULARIO DE UN REGISTRO ESPECIFICO:
+    def action_ver_este_paciente(self):
+        self.ensure_one()
+        return {
+            'type'     : 'ir.actions.act_window',
+            'res_model': 'hospital.patient',
+            'res_id'   : self.id,
+            'view_mode': 'form',
+            'target'   : 'current',
+        }
+
+----------------------------------------
+2. ir.actions.server (SERVER ACTION)
+----------------------------------------
+Proposito: Ejecutar codigo Python del lado del servidor.
+           Se usa en botones, automatizaciones, crons y acciones masivas.
+
+EN XML (accion que llama a un metodo):
+    <record id="action_server_confirmar_paciente" model="ir.actions.server">
+        <field name="name">Confirmar Paciente</field>
+        <field name="model_id" ref="model_hospital_patient"/>
+        <field name="binding_model_id" ref="model_hospital_patient"/>
+        <field name="state">code</field>
+        <field name="code">
+            for record in records:
+                record.action_confirmar()
+        </field>
+    </record>
+
+CAMPOS:
+  model_id         --> Modelo sobre el que actua.
+  binding_model_id --> Si se define, la accion aparece en el menu
+                       "Accion" de la vista lista del modelo.
+  state            --> 'code' (ejecuta codigo) | 'object_write' |
+                       'object_create' | 'multi' (encadena acciones).
+  code             --> Codigo Python a ejecutar. 'records' = recordset seleccionado.
+
+DESDE PYTHON (como metodo normal):
+    # La mayoria de server actions se implementan como metodos directos:
+    def action_confirmar(self):
+        for record in self:
+            if record.state != 'borrador':
+                raise UserError('Solo se pueden confirmar registros en borrador.')
+            record.write({'state': 'confirmado'})
+
+----------------------------------------
+3. ir.actions.client (CLIENT ACTION)
+----------------------------------------
+Proposito: Ejecutar una accion en el frontend (JavaScript/OWL).
+           Casos: mostrar notificaciones, abrir URLs, recargar la UI.
+
+RETORNAR NOTIFICACION DESDE PYTHON (Odoo 16+/18):
+    return {
+        'type'  : 'ir.actions.client',
+        'tag'   : 'display_notification',
+        'params': {
+            'title'  : 'Exito',
+            'message': 'El paciente fue dado de alta correctamente.',
+            'type'   : 'success',    # success | warning | danger | info
+            'sticky' : False,        # True: el usuario debe cerrarlo manualmente
+            'next'   : {'type': 'ir.actions.act_window_close'},  # Opcional
+        }
+    }
+
+RECARGAR LA VISTA ACTUAL:
+    return {'type': 'ir.actions.client', 'tag': 'reload'}
+
+CERRAR EL DIALOGO ACTUAL (wizard):
+    return {'type': 'ir.actions.act_window_close'}
+
+----------------------------------------
+4. ir.actions.report (REPORT ACTION)
+----------------------------------------
+Proposito: Generar e imprimir un reporte PDF o XLSX.
+
+EN XML:
+    <record id="action_report_patient_ficha" model="ir.actions.report">
+        <field name="name">Ficha de Paciente</field>
+        <field name="model">hospital.patient</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">hospital_gestion.report_patient_ficha</field>
+        <field name="report_file">hospital_gestion.report_patient_ficha</field>
+        <field name="binding_model_id" ref="model_hospital_patient"/>
+        <field name="binding_type">report</field>
+    </record>
+
+TIPOS DE REPORTE:
+  qweb-pdf   --> Genera PDF con plantilla QWeb
+  qweb-html  --> Genera HTML con plantilla QWeb
+  xlsx       --> Genera Excel (requiere libreria adicional)
+
+DESDE PYTHON:
+    def action_imprimir_ficha(self):
+        return self.env.ref('hospital_gestion.action_report_patient_ficha').report_action(self)
+
+----------------------------------------
+ERRORES COMUNES
+----------------------------------------
+[X] El action abre la vista pero no aplica el dominio
+    Causa:    El dominio usa comillas incorrectas o referencias a campos
+              que no existen en el modelo.
+    Solucion: Verificar el dominio en Ajustes > Tecnico > Acciones > Acciones de ventana.
+
+[X] El boton con type="action" no abre el wizard correcto
+    Causa:    La referencia al action en el boton usa nombre incorrecto.
+    Solucion: Formato: name="%(modulo.id_del_action)d"
+              Ejemplo: name="%(hospital_gestion.action_wizard_confirmar)d"
+
+[X] La notificacion display_notification no aparece
+    Causa:    El metodo retorna la accion pero Odoo no la procesa porque
+              es llamado desde un contexto que no espera retorno de accion.
+    Solucion: Asegurarse que el boton sea type="object" y que el metodo
+              retorne el dict de la accion.
+
+----------------------------------------
+REGLAS DE ORO
+----------------------------------------
+1. VIEW_MODE EN ORDEN: El primer modo en view_mode es el que se abre
+   por defecto. Pon list primero para modelos con muchos registros,
+   form primero para wizards y modelos de configuracion.
+
+2. CONTEXT PARA DEFAULTS: Usa context={'default_campo': valor} en
+   actions para precargar campos al crear nuevos registros desde esa accion.
+
+3. HELP EN ACTIONS: Siempre agrega el campo <help> con el mensaje de
+   vista vacia. Mejora la experiencia de usuario cuando no hay registros.
+
+4. BINDING_MODEL PARA ACCIONES MASIVAS: Si quieres que una server action
+   aparezca en el menu "Accion" de la lista, agrega binding_model_id.
+
+5. TARGET NEW PARA WIZARDS: Para abrir wizards usa 'target': 'new'.
+   Para navegar entre modelos relacionados usa 'target': 'current'.
+
+----------------------------------------
+RELACIONADO CON
+----------------------------------------
+  notas-views.txt   --> Las vistas que abren los actions
+  notas-menus.txt   --> Los menus que referencian los actions
+  notas-wizards.txt --> Actions para abrir wizards
+
+========================================
