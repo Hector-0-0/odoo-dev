@@ -1,0 +1,80 @@
+========================================
+     GUÍA MAESTRA: SQL Y CONSTRAINTS
+========================================
+
+----------------------------------------
+DESCRIPCIÓN TÉCNICA
+----------------------------------------
+Odoo permite interactuar con PostgreSQL de dos formas: mediante 
+restricciones de integridad (Constraints) y mediante consultas 
+directas (SQL Crudo) cuando el ORM no es suficiente por rendimiento.
+
+----------------------------------------
+1. SQL CONSTRAINTS (_sql_constraints)
+----------------------------------------
+Son reglas de integridad ejecutadas por la base de datos. Son más 
+rápidas y seguras que las validaciones en Python.
+
+SINTAXIS:
+_sql_constraints = [
+    ('name_uniq', 'unique(name)', '¡El nombre ya existe!'),
+    ('positive_price', 'CHECK(price > 0)', 'El precio debe ser positivo')
+]
+
+Componentes:
+- Nombre: Identificador único de la restricción en la DB.
+- Definición: Sintaxis SQL (unique, check).
+- Mensaje: Error que verá el usuario si se viola la regla.
+
+----------------------------------------
+2. PYTHON CONSTRAINTS (@api.constrains)
+----------------------------------------
+Se usan cuando la validación depende de lógica compleja o campos 
+relacionables que SQL no puede ver fácilmente.
+
+SINTAXIS:
+@api.constrains('age')
+def _check_age(self):
+    for record in self:
+        if record.age < 18:
+            raise ValidationError("El paciente debe ser mayor de edad.")
+
+----------------------------------------
+3. SQL CRUDO (EJECUCIÓN DIRECTA)
+----------------------------------------
+A veces el ORM es lento para reportes masivos. Usamos `self.env.cr`.
+
+SINTAXIS:
+query = "SELECT name FROM res_partner WHERE customer_rank > %s"
+self.env.cr.execute(query, (10,))
+res = self.env.cr.dictfetchall()  --> Devuelve lista de diccionarios
+
+----------------------------------------
+REGLAS DE ORO DEL EXPERTO
+----------------------------------------
+1. SQL ANTES QUE PYTHON: Si puedes validar algo con un _sql_constraint 
+   (como un nombre único), HAZLO. Es imposible de saltar, incluso
+   importando datos masivamente o vía API.
+
+2. SEGURIDAD SQL: NUNCA uses f-strings o concatenación en SQL crudo.
+   - Mal: cr.execute("SELECT * FROM table WHERE id = " + user_id)
+   - Bien: cr.execute("SELECT * FROM table WHERE id = %s", (user_id,))
+   Esto evita ataques de Inyección SQL.
+
+3. INVALIDACIÓN DE CACHÉ: Si usas SQL crudo para MODIFICAR datos 
+   (UPDATE/INSERT), debes invalidar la caché del ORM:
+   self.env.cache.invalidate()
+
+4. CAMPO UNIQUE MULTIPLE: Puedes hacer combinaciones únicas:
+   unique(partner_id, date) --> Evita duplicados para el mismo 
+   cliente en la misma fecha.
+
+----------------------------------------
+LIMITACIONES
+----------------------------------------
+- Las _sql_constraints NO funcionan en campos computados no 
+  almacenados (store=False).
+- SQL crudo se salta las reglas de seguridad (ir.rule) y los 
+  métodos create/write heredados. Úsalo con extrema precaución.
+
+========================================

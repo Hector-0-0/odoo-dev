@@ -1,0 +1,92 @@
+========================================
+      GUÍA MAESTRA: WIZARDS (ASISTENTES)
+========================================
+
+----------------------------------------
+DESCRIPCIÓN TÉCNICA
+----------------------------------------
+Los Wizards son modelos que heredan de 'models.TransientModel'. 
+Se utilizan para crear ventanas emergentes (diálogos) donde el 
+usuario introduce datos temporales para realizar una acción 
+específica (ej: un reporte de ventas entre fechas).
+
+----------------------------------------
+CARACTERÍSTICAS DE TRANSIENTMODEL
+----------------------------------------
+- Persistencia temporal: Los datos se guardan en la DB, pero Odoo
+  los elimina automáticamente cada hora (Vacuum).
+- Sin seguridad compleja: No suelen requerir reglas de registro 
+  (ir.rule), pero sí acceso en el CSV de seguridad.
+- Ligeros: Diseñados para no sobrecargar la base de datos.
+
+----------------------------------------
+ESTRUCTURA DE IMPLEMENTACIÓN
+----------------------------------------
+1. MODELO (Python):
+   class SaleBatchUpdate(models.TransientModel):
+       _name = 'sale.batch.update'
+       _description = 'Actualización Masiva de Ventas'
+
+       new_date = fields.Date('Nueva Fecha', required=True)
+       order_ids = fields.Many2many('sale.order')
+
+       def action_apply(self):
+           self.order_ids.write({'date_order': self.new_date})
+
+2. VISTA (XML):
+   <record id="view_wizard_form" model="ir.ui.view">
+       <field name="model">sale.batch.update</field>
+       <field name="arch" type="xml">
+           <form>
+               <group>
+                   <field name="new_date"/>
+               </group>
+               <footer>
+                   <button name="action_apply" string="Aplicar" 
+                           type="object" class="btn-primary"/>
+                   <button string="Cancelar" class="btn-secondary" 
+                           special="cancel"/>
+               </footer>
+           </form>
+       </field>
+   </record>
+
+----------------------------------------
+CÓMO LANZAR UN WIZARD
+----------------------------------------
+Desde un botón en el modelo principal:
+
+def open_wizard(self):
+    return {
+        'name': 'Actualizar Ventas',
+        'type': 'ir.actions.act_window',
+        'res_model': 'sale.batch.update',
+        'view_mode': 'form',
+        'target': 'new',              --> Abre la ventana como POP-UP
+        'context': {'default_order_ids': self.ids}
+    }
+
+----------------------------------------
+REGLAS DE ORO DEL EXPERTO
+----------------------------------------
+1. TARGET='NEW': Es el atributo que define que la vista sea un 
+   cuadro de diálogo emergente. Sin esto, se verá como una página normal.
+
+2. FOOTER: Los botones del Wizard siempre deben ir dentro del tag 
+   <footer> para que aparezcan en la parte inferior derecha del pop-up.
+
+3. SPECIAL='CANCEL': Usa este atributo en el botón de cerrar para 
+   que Odoo cierre la ventana automáticamente sin ejecutar código.
+
+4. LIMPIEZA: No uses TransientModels para guardar datos maestros.
+   Si necesitas que la información persista, usa models.Model.
+
+----------------------------------------
+CASOS DE USO COMUNES
+----------------------------------------
+- Generación de reportes PDF con filtros de fecha.
+- Cambio de estado masivo de registros seleccionados.
+- Pasarelas de confirmación (¿Está seguro de que desea...?).
+- Interfaces de configuración rápida (Setup Wizards).
+
+========================================

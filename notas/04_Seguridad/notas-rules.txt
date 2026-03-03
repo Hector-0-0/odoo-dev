@@ -1,0 +1,77 @@
+========================================
+    GUÍA MAESTRA: RECORD RULES (XML)
+========================================
+
+----------------------------------------
+DESCRIPCIÓN TÉCNICA
+----------------------------------------
+Las Record Rules (ir.rule) son filtros dinámicos que se aplican a 
+nivel de SQL (cláusula WHERE) para restringir qué registros puede 
+ver o modificar un usuario según una lógica de negocio.
+
+----------------------------------------
+ESTRUCTURA DE UNA REGLA (XML)
+----------------------------------------
+Ubicación recomendada: security/hospital_security.xml
+
+<record id="rule_paciente_personal" model="ir.rule">
+    <field name="name">Pacientes Propios</field>
+    <field name="model_id" ref="model_hospital_paciente"/>
+    <field name="groups" eval="[(4, ref('hospital.group_doctor'))]"/>
+    <field name="domain_force">[('doctor_id', '=', user.id)]</field>
+    <field name="perm_read" eval="True"/>
+    <field name="perm_write" eval="True"/>
+    <field name="perm_create" eval="True"/>
+    <field name="perm_unlink" eval="False"/>
+</record>
+
+----------------------------------------
+COMPONENTES CLAVE
+----------------------------------------
+model_id     --> Referencia al modelo (con prefijo model_).
+groups       --> Grupos a los que aplica la regla. Si está vacío, 
+                 se considera una "Global Rule".
+domain_force --> El filtro que restringe los datos.
+                 'user' es una variable disponible (usuario actual).
+perm_...     --> Define si la restricción aplica para Leer, Escribir, 
+                 Crear o Eliminar.
+
+----------------------------------------
+GLOBAL RULES VS GROUP RULES
+----------------------------------------
+1. Global Rules (Sin grupos asignados):
+   - Se aplican a TODOS los usuarios (incluyendo Admin).
+   - Se combinan usando el operador lógico AND.
+   - Si una regla global restringe algo, nadie lo ve.
+
+2. Group Rules (Asociadas a un grupo):
+   - Se aplican solo a los miembros de ese grupo.
+   - Se combinan entre sí usando el operador lógico OR.
+   - Si perteneces a dos grupos y uno te da acceso, TIENES acceso.
+
+----------------------------------------
+REGLAS DE ORO DEL EXPERTO
+----------------------------------------
+1. MULTI-COMPANY: Odoo usa Record Rules para separar datos entre 
+   compañías. El dominio estándar es:
+   ['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]
+
+2. EVITAR REGLAS GLOBALES RESTRICTIVAS: Son difíciles de debugear. 
+   Es preferible asignar reglas a grupos específicos.
+
+3. EL USUARIO ADMIN: Por defecto, el administrador del sistema 
+   (ID 1) se salta la mayoría de las reglas, excepto las Globales 
+   si están mal configuradas.
+
+4. RENDIMIENTO: No uses métodos pesados en el domain_force. Odoo 
+   ejecuta este dominio en cada consulta SQL al modelo.
+
+----------------------------------------
+OPERADORES ESPECIALES EN DOMINIOS
+----------------------------------------
+- 'user.id': ID del usuario actual.
+- 'user.partner_id': Registro de contacto del usuario.
+- 'company_id': ID de la compañía actual del usuario.
+- 'company_ids': Lista de todas las compañías permitidas al usuario.
+
+========================================

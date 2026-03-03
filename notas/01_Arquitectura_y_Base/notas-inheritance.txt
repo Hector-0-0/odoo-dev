@@ -1,0 +1,91 @@
+========================================
+     GUÍA MAESTRA: HERENCIA EN ODOO
+========================================
+
+----------------------------------------
+DESCRIPCIÓN TÉCNICA
+----------------------------------------
+La herencia permite extender la funcionalidad de modelos, vistas y
+clases sin modificar el código original (código base de Odoo). Esto
+facilita las actualizaciones y mantiene la modularidad.
+
+----------------------------------------
+1. HERENCIA DE EXTENSIÓN (CLASS INHERITANCE)
+----------------------------------------
+Propósito: Añadir campos o modificar métodos de un modelo existente.
+Efecto: Se mantiene la misma tabla en la base de datos.
+
+SINTAXIS:
+class SaleOrder(models.Model):
+    _inherit = 'sale.order'              --> Referencia al modelo base
+
+    custom_field = fields.Char('Nota')   --> Añade un campo nuevo
+
+----------------------------------------
+2. HERENCIA POR PROTOTIPO (PROTOTYPE)
+----------------------------------------
+Propósito: Copiar la definición de un modelo a uno nuevo.
+Efecto: Se crea una tabla nueva con los campos del original.
+
+SINTAXIS:
+class MyTask(models.Model):
+    _name = 'my.custom.task'             --> Nombre del nuevo modelo
+    _inherit = 'project.task'            --> Copia todo de project.task
+
+----------------------------------------
+3. HERENCIA DE DELEGACIÓN (DELEGATION)
+----------------------------------------
+Propósito: Un modelo "contiene" a otro (Relación 1:1 polimórfica).
+Efecto: El nuevo modelo tiene sus propios datos, pero "hereda" 
+los campos del padre como si fueran suyos mediante un link.
+
+SINTAXIS:
+class HospitalUser(models.Model):
+    _name = 'hospital.user'
+    _inherits = {'res.users': 'user_id'} --> Hereda de res.users
+
+    user_id = fields.Many2one('res.users', required=True, ondelete='cascade')
+
+----------------------------------------
+HERENCIA DE VISTAS (UI)
+----------------------------------------
+Para modificar el XML de una vista existente, se usa el tag <xpath>
+o selectores de campo.
+
+SINTAXIS:
+<record id="view_order_form_inherit" model="ir.ui.view">
+    <field name="name">sale.order.form.inherit</field>
+    <field name="model">sale.order</field>
+    <field name="inherit_id" ref="sale.view_order_form"/> --> Vista original
+    <field name="arch" type="xml">
+        <xpath expr="//field[@name='payment_term_id']" position="after">
+            <field name="custom_field"/>
+        </xpath>
+    </field>
+</record>
+
+----------------------------------------
+REGLAS DE ORO DEL EXPERTO
+----------------------------------------
+1. SUPER(): Al heredar un método (ej. create o write), SIEMPRE llama 
+   a super(). De lo contrario, romperás la lógica base de Odoo.
+   
+   def create(self, vals):
+       # Mi lógica aquí
+       return super(MyClass, self).create(vals)
+
+2. PRIORIDAD: Usa la posición 'before', 'after' o 'inside' en XPath
+   según necesites. Evita 'replace' a menos que sea estrictamente
+   necesario, ya que rompe la compatibilidad con otros módulos.
+
+3. REF: El 'inherit_id' requiere el formato 'nombre_modulo.id_xml'.
+
+----------------------------------------
+CUÁNDO USAR CADA UNA
+----------------------------------------
+- ¿Quieres añadir un campo a Clientes? -> Class Inheritance (_inherit).
+- ¿Quieres crear "Usuarios del Hospital" que también sean "Usuarios de 
+  Sistema"? -> Delegation (_inherits).
+- ¿Quieres una copia exacta de un modelo pero en otra tabla? -> Prototype.
+
+========================================

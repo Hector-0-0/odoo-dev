@@ -1,0 +1,82 @@
+========================================
+      GUÍA MAESTRA: MODELOS EN ODOO
+========================================
+
+----------------------------------------
+DESCRIPCIÓN TÉCNICA
+----------------------------------------
+Los modelos son clases de Python que Odoo mapea automáticamente a 
+tablas de base de datos (PostgreSQL) mediante su ORM. Definen la 
+estructura, restricciones y comportamiento de los datos.
+
+----------------------------------------
+TIPOS DE MODELOS (LA TRINIDAD DE ODOO)
+----------------------------------------
+1. models.Model (Persistente):
+   - Es el más común.
+   - Crea una tabla física permanente en PostgreSQL.
+   - Los datos se guardan hasta que se eliminen manualmente.
+
+2. models.TransientModel (Transitorio/Wizards):
+   - Se usa para asistentes (asistentes de ventas, reportes, etc.).
+   - Crea una tabla física, pero los datos son temporales.
+   - Odoo limpia estos registros periódicamente (vacuum) para no 
+     llenar la base de datos de basura.
+
+3. models.AbstractModel (Abstracto):
+   - No crea una tabla en la base de datos.
+   - Se usa como "plantilla" para que otros modelos hereden su lógica.
+   - Ejemplo común: 'report.abstract_report' para lógica de PDFs.
+
+----------------------------------------
+ATRIBUTOS DE CLASE (METADATOS)
+----------------------------------------
+_name        --> Identificador único (Ej: 'hospital.paciente') [OBLIGATORIO]
+_description --> Nombre legible para el usuario [OBLIGATORIO]
+_order       --> Orden por defecto en las vistas (Ej: 'date_start desc, name')
+_rec_name    --> Campo que se mostrará en los Many2one (Default: 'name')
+_table       --> Permite forzar un nombre de tabla SQL específico
+_inherit     --> Nombre del modelo que se desea extender o copiar
+_inherits    --> Diccionario para herencia por delegación
+
+----------------------------------------
+SINTAXIS PROFESIONAL
+----------------------------------------
+from odoo import models, fields
+
+class HospitalPaciente(models.Model):
+    _name = 'hospital.paciente'
+    _description = 'Registro de Pacientes'
+    _order = 'name'
+    _rec_name = 'full_name'
+
+    name = fields.Char(string='DNI', required=True)
+    full_name = fields.Char(string='Nombre Completo')
+    active = fields.Boolean(default=True)  --> Permite archivado lógico
+
+----------------------------------------
+REGLAS DE ORO DEL EXPERTO
+----------------------------------------
+1. CONVENCIÓN DE NOMBRES: Usa puntos para separar módulos y nombres.
+   Correcto: 'sale.order'. Incorrecto: 'sale_order'.
+
+2. CAMPO ACTIVE: Si añades un campo 'active' (Boolean), Odoo activa 
+   automáticamente la funcionalidad de "Archivar/Desarchivar".
+
+3. ACCESO: Al crear un modelo nuevo, DEBES añadirlo en el archivo 
+   ir.model.access.csv, de lo contrario, no será visible ni para admin.
+
+4. EVITAR _TABLE: A menos que estés integrando una base de datos 
+   externa legacy, deja que Odoo nombre las tablas automáticamente.
+
+----------------------------------------
+RESERVADOS POR EL SISTEMA
+----------------------------------------
+Odoo crea automáticamente estos campos en cada tabla (salvo Abstract):
+- id (Primary Key)
+- create_uid (ID del usuario que creó el registro)
+- create_date (Fecha de creación)
+- write_uid (Último usuario que modificó)
+- write_date (Última fecha de modificación)
+
+========================================

@@ -1,0 +1,87 @@
+========================================
+       GUÍA MAESTRA: EL ORM DE ODOO
+========================================
+
+----------------------------------------
+DESCRIPCIÓN TÉCNICA
+----------------------------------------
+El ORM es la capa que traduce objetos Python a consultas SQL. En 
+Odoo 17/18, el ORM está optimizado para trabajar con "Recordsets" 
+(conjuntos de registros), permitiendo operaciones masivas con 
+una sola línea de código.
+
+----------------------------------------
+1. MÉTODOS DE BÚSQUEDA Y LECTURA
+----------------------------------------
+search(domain)   --> Retorna un recordset con los registros que 
+                     cumplen el dominio (filtro).
+                     Ej: self.env['res.partner'].search([('is_company', '=', True)])
+
+search_count()   --> Retorna solo el número de registros. Más 
+                     eficiente que len(search()).
+
+browse(ids)      --> Retorna un recordset para los IDs proporcionados.
+                     No hace consulta a DB hasta que se accede a un campo.
+
+exists()         --> Filtra un recordset dejando solo los registros 
+                     que realmente existen en la DB.
+
+----------------------------------------
+2. MÉTODOS DE ESCRITURA Y CREACIÓN
+----------------------------------------
+create(vals)     --> Crea un nuevo registro. 'vals' es un diccionario.
+                     Ej: self.create({'name': 'Nuevo'})
+
+write(vals)      --> Actualiza los registros del recordset actual.
+                     Ej: self.write({'active': False})
+
+unlink()         --> Elimina los registros del recordset.
+
+copy(default)    --> Duplica el registro actual. 'default' permite
+                     cambiar valores en la copia.
+
+----------------------------------------
+3. MANIPULACIÓN DE RECORDSETS
+----------------------------------------
+Odoo trata los registros como colecciones (sets).
+- filtered(func) --> Retorna registros que cumplen una condición Python.
+- mapped(func)   --> Retorna una lista o recordset de valores específicos.
+- sorted(func)   --> Retorna el recordset ordenado por una clave.
+
+Ejemplo:
+emails = self.order_line.mapped('product_id.name')
+
+----------------------------------------
+4. EL ENTORNO (SELF.ENV)
+----------------------------------------
+self.env         --> Es el núcleo del ORM. Contiene:
+- self.env.user  --> Registro del usuario actual.
+- self.env.company -> Registro de la compañía actual.
+- self.env.cr    --> El cursor de la base de datos (SQL).
+- self.env.ref() --> Retorna el registro de un ID XML (External ID).
+
+----------------------------------------
+REGLAS DE ORO DEL EXPERTO
+----------------------------------------
+1. EVITAR BUCLES FOR PARA WRITE: 
+   - Mal: for rec in self: rec.write({'state': 'done'})
+   - Bien: self.write({'state': 'done'})  --> Una sola query SQL.
+
+2. SINGLETONS: Si un método usa 'self.name' y el recordset tiene 
+   más de un registro, Odoo lanzará un "Expected singleton" error.
+   Usa 'self.ensure_one()' para validar o itera con 'for'.
+
+3. BROWSE VS SEARCH: Usa browse si ya tienes los IDs; es mucho más 
+   rápido porque no ejecuta un SELECT inmediatamente (Lazy Loading).
+
+4. TRABAJO CON IDS: Siempre que sea posible, trabaja con IDs en 
+   lugar de objetos para ahorrar memoria en procesos masivos.
+
+----------------------------------------
+OPERACIONES DE CONJUNTO
+----------------------------------------
+recordset1 | recordset2  --> Unión
+recordset1 & recordset2  --> Intersección
+recordset1 - recordset2  --> Diferencia
+
+========================================

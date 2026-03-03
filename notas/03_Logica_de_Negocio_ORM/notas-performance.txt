@@ -1,0 +1,85 @@
+========================================
+    GUÍA MAESTRA: OPTIMIZACIÓN Y PERF
+========================================
+
+----------------------------------------
+DESCRIPCIÓN TÉCNICA
+----------------------------------------
+La optimización en Odoo se basa en reducir el número de consultas 
+SQL (Queries) y el uso de memoria. El ORM de Odoo 17/18 incluye 
+mecanismos de prefetch y caché que deben aprovecharse correctamente.
+
+----------------------------------------
+1. EL PROBLEMA DE LAS CONSULTAS N+1
+----------------------------------------
+Ocurre cuando iteras un recordset y accedes a un campo relacional, 
+disparando una consulta SQL por cada registro.
+
+MAL (N consultas):
+for record in self:
+    print(record.partner_id.name)  --> Una query por cada vuelta
+
+BIEN (1 consulta):
+partners = self.mapped('partner_id') --> Odoo precarga todos los IDs
+for record in self:
+    print(record.partner_id.name)  --> Lee de la caché del prefetch
+
+----------------------------------------
+2. MAPPED, FILTERED Y SORTED (IN-MEMORY)
+----------------------------------------
+Usa estos métodos para manipular datos ya cargados en memoria en 
+lugar de hacer nuevos `search()` a la base de datos.
+
+- mapped(): Extrae valores o recordsets relacionados.
+- filtered(): Filtra registros usando lógica Python (sin tocar SQL).
+- sorted(): Ordena el recordset actual.
+
+----------------------------------------
+3. BATCH PROCESSING (PROCESAMIENTO POR LOTES)
+----------------------------------------
+Si debes procesar un millón de registros, no lo hagas en una sola 
+transacción. Divide la carga para evitar bloqueos de tablas SQL.
+
+SINTAXIS:
+records = self.search([], limit=1000)
+while records:
+    # Procesar lote
+    records.write({'state': 'processed'})
+    self.env.cr.commit()  --> Libera memoria y asegura datos
+    records = self.search([('state', '!=', 'processed')], limit=1000)
+
+----------------------------------------
+4. PREFETCH Y CONTEXTO
+----------------------------------------
+Odoo carga automáticamente campos de registros del mismo recordset.
+Si extraes un ID de un recordset, rompes el prefetch.
+
+- Mantén los recordsets unidos siempre que sea posible.
+- Usa `with_context(prefetch_fields=False)` si vas a leer miles de 
+  registros y solo necesitas un campo específico (ahorra RAM).
+
+----------------------------------------
+REGLAS DE ORO DEL EXPERTO
+----------------------------------------
+1. SEARCH_COUNT: Si solo quieres saber si existen registros o 
+   cuántos hay, usa `search_count()`. Es 10x más rápido que `len(search())`.
+
+2. READ_GROUP: Para estadísticas o sumatorias masivas, usa 
+   `read_group()`. Esto hace un "GROUP BY" en SQL en lugar de 
+   traer miles de registros a Python para sumarlos.
+
+3. EVITAR BUCLES EN COMPUTED FIELDS: Asegúrate de que tus campos 
+   computados sean rápidos. Si un campo computado hace un search(), 
+   la vista de lista (tree view) será extremadamente lenta.
+
+4. SQL CRUDO PARA REPORTES: Si el ORM tarda más de 2-3 segundos en 
+   reunir datos para un reporte, considera usar `self.env.cr.execute()`.
+
+----------------------------------------
+HERRAMIENTAS DE DIAGNÓSTICO
+----------------------------------------
+- --log-level=debug_sql: Muestra todas las queries en la terminal.
+- Odoo Profiler: Usa `with profile(description='test'):` para 
+  analizar qué línea de código consume más tiempo.
+
+========================================

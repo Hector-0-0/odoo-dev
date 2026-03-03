@@ -1,0 +1,74 @@
+========================================
+      GUÍA MAESTRA: SCAFFOLDING (v17/18)
+========================================
+
+----------------------------------------
+DESCRIPCIÓN TÉCNICA
+----------------------------------------
+El Scaffolding es la estructura de directorios estandarizada de un 
+módulo. Seguir esta arquitectura es obligatorio para que el servidor 
+localice activos, vistas y lógica de forma eficiente.
+
+----------------------------------------
+ESTRUCTURA DE CARPETAS PROFESIONAL
+----------------------------------------
+mi_modulo/
+├── __init__.py              --> Orquestador de Python
+├── __manifest__.py          --> Metadatos y carga de archivos
+├── controllers/             --> Endpoints HTTP (Rutas web/API)
+├── data/                    --> XML de datos (Secuencias, email templates)
+├── demo/                    --> XML con datos de prueba
+├── i18n/                    --> Archivos de traducción (.pot, .po)
+├── models/                  --> Definición de objetos de negocio
+├── report/                  --> Plantillas QWeb y lógica de reportes PDF
+├── security/                --> CSV de accesos y XML de reglas (Rules)
+├── static/                  --> Archivos públicos (CSS, JS, IMG, XML OWL)
+│   ├── description/         --> icon.png y descripción del módulo
+│   ├── src/                 --> Código fuente frontend
+│   │   ├── js/              --> Lógica OWL / JS
+│   │   ├── xml/             --> Plantillas OWL (vistas JS)
+│   │   └── scss/            --> Estilos CSS avanzados
+├── views/                   --> Definición de la interfaz (XML)
+└── wizard/                  --> Modelos transitorios y sus vistas
+
+----------------------------------------
+PROCESO DE CREACIÓN (PASO A PASO)
+----------------------------------------
+1. CREACIÓN POR COMANDO:
+   Odoo permite generar esta base automáticamente:
+   $ odoo-bin scaffold <nombre_modulo> <ruta_destino>
+
+2. LIMPIEZA INICIAL:
+   El comando scaffold crea archivos de ejemplo. Un experto borra
+   lo innecesario y renombra 'models/models.py' a algo descriptivo
+   como 'models/paciente.py'.
+
+3. PERMISOS DE ARCHIVO:
+   En sistemas Linux, asegúrate de que el usuario de Odoo tenga
+   permisos de lectura sobre estas carpetas.
+
+----------------------------------------
+REGLAS DE ORO DEL EXPERTO
+----------------------------------------
+1. NOMBRES TÉCNICOS: Usa siempre snake_case para archivos y carpetas.
+   Ej: sale_order_line.py, NO SaleOrderLine.py.
+
+2. SEPARACIÓN DE VISTAS: No mezcles vistas de diferentes modelos en
+   un solo archivo XML. Crea uno por modelo para facilitar el debug.
+   Ej: paciente_views.xml, consulta_views.xml.
+
+3. CARPETA STATIC: Todo lo que esté aquí es accesible vía URL. No 
+   guardes lógica sensible o privada en esta carpeta.
+
+4. DESCRIPTION: El icono debe ser icon.png (256x256px) para que se 
+   vea nítido en el tablero de Odoo.
+
+----------------------------------------
+CONSEJOS DE MANTENIMIENTO
+----------------------------------------
+- Si tu carpeta 'models/' crece mucho (más de 10 archivos), usa
+  subcarpetas pero recuerda actualizar los __init__.py recursivamente.
+- Mantén la carpeta 'data/' para registros que el usuario NO debe
+  borrar, como tipos de documentos o configuraciones base.
+
+========================================

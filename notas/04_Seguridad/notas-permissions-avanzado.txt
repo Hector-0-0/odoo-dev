@@ -1,0 +1,98 @@
+========================================
+    GUÍA MAESTRA: PERMISOS AVANZADOS
+========================================
+
+----------------------------------------
+DESCRIPCIÓN TÉCNICA
+----------------------------------------
+La seguridad avanzada en Odoo gestiona la jerarquía de funciones y 
+el control granular. No solo define quién entra, sino cómo se 
+heredan las responsabilidades y qué elementos de la UI (campos, 
+botones) desaparecen según el nivel de privilegio.
+
+----------------------------------------
+1. CATEGORÍAS DE SEGURIDAD (Application Categories)
+----------------------------------------
+Para que los grupos aparezcan organizados en la ficha del usuario 
+dentro de Ajustes, es obligatorio agruparlos en una categoría.
+
+SINTAXIS (XML):
+<record id="module_category_hospital" model="ir.module.category">
+    <field name="name">Gestión Hospitalaria</field>
+    <field name="description">Niveles de acceso para el personal</field>
+    <field name="sequence">10</field>
+</record>
+
+----------------------------------------
+2. HERENCIA DE GRUPOS (Implied IDs)
+----------------------------------------
+Permite crear una escalera de permisos. El "Manager" no necesita 
+permisos explícitos si hereda los del "Usuario".
+
+SINTAXIS (XML):
+<record id="group_hospital_user" model="res.groups">
+    <field name="name">Usuario: Ver Pacientes</field>
+    <field name="category_id" ref="module_category_hospital"/>
+    <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
+</record>
+
+<record id="group_hospital_manager" model="res.groups">
+    <field name="name">Administrador: Control Total</field>
+    <field name="category_id" ref="module_category_hospital"/>
+    <field name="implied_ids" eval="[(4, ref('group_hospital_user'))]"/>
+</record>
+
+----------------------------------------
+3. SEGURIDAD A NIVEL DE CAMPO Y BOTÓN
+----------------------------------------
+Puedes restringir elementos específicos de la lógica o la UI sin 
+necesidad de crear reglas de registro (Record Rules).
+
+- EN PYTHON (Atributo groups):
+  cost_price = fields.Float("Costo", groups="hospital.group_hospital_manager")
+  # El campo ni siquiera viajará al cliente si el usuario no tiene el grupo.
+
+- EN XML (Vistas):
+  <button name="action_cancel" string="Anular" 
+          groups="hospital.group_hospital_manager"/>
+
+----------------------------------------
+4. MODIFICACIÓN DE ENTORNOS (SUDO / WITH_USER)
+----------------------------------------
+Un desarrollador experto usa estas herramientas para saltar la 
+seguridad programáticamente de forma controlada.
+
+- self.sudo(): Crea un nuevo entorno con privilegios de Administrador.
+  Útil para leer configuraciones globales inaccesibles al usuario.
+- self.with_user(user_id): Cambia el contexto para verificar 
+  qué vería exactamente ese usuario.
+
+----------------------------------------
+REGLAS DE ORO DEL EXPERTO
+----------------------------------------
+1. NO USAR ADMIN PARA TESTEO: El usuario Administrador (ID 1) bypassea
+   la mayoría de las restricciones de seguridad. Prueba siempre con 
+   un usuario estándar para validar el CSV.
+
+2. ORDEN DE EVALUACIÓN:
+   - CSV (ACL): ¿Puede usar el modelo? (Puerta principal).
+   - Record Rules: ¿Qué registros de ese modelo puede ver? (Filtro).
+   - Field Groups: ¿Qué columnas puede ver? (Visibilidad).
+
+3. REGLAS MULTI-COMPAÑÍA: Siempre define una regla global (sin grupo)
+   para el campo 'company_id' si el módulo es multi-empresa.
+   [('company_id', 'in', company_ids)]
+
+4. EVITAR EL COMANDO (6, 0, [IDs]): En herencia de grupos, prefiere 
+   usar (4, ID) para añadir, ya que el comando 6 borra cualquier 
+   herencia previa que otros módulos pudieran haber inyectado.
+
+----------------------------------------
+SINTAXIS DE RELACIONES (TUTORIAL RÁPIDO)
+----------------------------------------
+- (4, id): Enlaza un registro existente.
+- (3, id): Desvincula (no borra de la DB).
+- (2, id): Borra el registro físicamente de la DB.
+- (0, 0, {values}): Crea y enlaza un registro nuevo.
+
+========================================

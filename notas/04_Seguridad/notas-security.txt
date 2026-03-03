@@ -1,0 +1,75 @@
+========================================
+     GUÍA MAESTRA: SEGURIDAD (ACL)
+========================================
+
+----------------------------------------
+DESCRIPCIÓN TÉCNICA
+----------------------------------------
+El archivo ir.model.access.csv define los permisos básicos a nivel 
+de modelo. Determina qué grupos de usuarios pueden Leer, Escribir, 
+Crear o Eliminar registros en una tabla específica.
+
+----------------------------------------
+ESTRUCTURA DEL ARCHIVO CSV
+----------------------------------------
+Ubicación obligatoria: security/ir.model.access.csv
+
+El archivo debe tener exactamente estas 8 columnas:
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+
+1. id: Identificador único del permiso (Ej: access_hospital_paciente).
+2. name: Nombre descriptivo (Ej: hospital.paciente.res.user).
+3. model_id:id: ID del modelo con prefijo 'model_'. 
+   (Ej: model_hospital_paciente).
+4. group_id:id: ID del grupo que recibe el permiso. 
+   Si se deja vacío, aplica para TODOS los usuarios.
+5. perm_read: 1 para permitir lectura, 0 para denegar.
+6. perm_write: 1 para permitir edición, 0 para denegar.
+7. perm_create: 1 para permitir creación, 0 para denegar.
+8. perm_unlink: 1 para permitir eliminación, 0 para denegar.
+
+----------------------------------------
+DEFINICIÓN DE GRUPOS (XML)
+----------------------------------------
+Antes de usarlos en el CSV, los grupos suelen definirse en un XML.
+
+SINTAXIS:
+<record id="group_hospital_manager" model="res.groups">
+    <field name="name">Manager de Hospital</field>
+    <field name="category_id" ref="base.module_category_services_hospital"/>
+    <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
+</record>
+
+----------------------------------------
+REGLAS DE ORO DEL EXPERTO
+----------------------------------------
+1. EL PREFIJO 'model_': En el CSV, Odoo busca el modelo internamente. 
+   Si tu modelo es 'hospital.paciente', en el CSV debes escribir 
+   'model_hospital_paciente' (cambiando puntos por guiones bajos).
+
+2. ORDEN DE CARGA: El archivo CSV debe estar declarado en el 
+   __manifest__.py dentro de la sección 'data', y SIEMPRE debe ir 
+   antes de los archivos de vistas XML.
+
+3. HERENCIA DE GRUPOS: Usa 'implied_ids' para que un grupo herede 
+   permisos de otro. Ej: Un Manager debe heredar los permisos del 
+   usuario básico (base.group_user).
+
+4. PERM_UNLINK: Sé extremadamente tacaño con el permiso de borrado. 
+   En ERPs profesionales, es mejor desactivar (active=False) que borrar.
+
+----------------------------------------
+ERRORES COMUNES (DEBUGGING)
+----------------------------------------
+- "Warning: You are not allowed to access 'model.name'":
+  Causa: Falta la línea correspondiente en el CSV para el usuario actual.
+
+- El módulo no carga o da error de "External ID not found":
+  Causa: No pusiste 'model_' antes del nombre del modelo en el CSV o 
+  el archivo no está en el manifest.
+
+- Los usuarios ven el menú pero no los datos:
+  Causa: Tienen perm_read en 0 o hay una 'ir.rule' (Regla de Registro) 
+  restringiendo el acceso.
+
+========================================

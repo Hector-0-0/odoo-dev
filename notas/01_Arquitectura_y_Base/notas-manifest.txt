@@ -1,0 +1,73 @@
+========================================
+    GUÍA MAESTRA: MANIFEST ODOO 17/18
+========================================
+
+----------------------------------------
+DESCRIPCIÓN TÉCNICA
+----------------------------------------
+El archivo __manifest__.py es un diccionario Python que actúa como
+el "DNI" del módulo. Define metadatos, dependencias, carga de datos
+y configuración de la interfaz para el servidor Odoo.
+
+----------------------------------------
+ATRIBUTOS DE IDENTIDAD
+----------------------------------------
+'name'         --> Nombre comercial (visible en la UI)
+'version'      --> Versión del módulo (Ej: 17.0.1.0.0)
+'author'       --> Desarrollador o empresa responsable
+'website'      --> URL de documentación o soporte
+'license'      --> Licencia (v17+ requiere LGPL-3 o superior)
+'category'     --> Ubicación en el catálogo (Ej: 'Sales/CRM')
+
+----------------------------------------
+CONTROL DE CARGA Y LÓGICA
+----------------------------------------
+'depends'      --> Módulos requeridos para funcionar (Carga previa)
+'data'         --> XML/CSV de carga única (Vistas, Seguridad, Data)
+'demo'         --> Archivos cargados solo si "Datos de prueba" está activo
+'assets'       --> Diccionario para JS, CSS y componentes OWL
+'installable'  --> Define si el módulo es funcional (True/False)
+'application'  --> Indica si es un módulo principal (App)
+'auto_install' --> Instalación forzada si sus dependencias existen
+
+----------------------------------------
+ESTRUCTURA PROFESIONAL (CÓDIGO)
+----------------------------------------
+{
+    'name': 'Custom Module Specialist',
+    'version': '17.0.1.0.0',                      --> v17 + Major.Minor.Patch
+    'category': 'Technical Settings',
+    'summary': 'Breve descripción de la mejora',
+    'author': 'Tu Nombre',
+    'license': 'LGPL-3',                         --> Estándar obligatorio
+    'depends': ['base', 'mail'],                 --> 'mail' añade el chatter
+    'data': [
+        'security/ir.model.access.csv',          --> SEGURIDAD PRIMERO
+        'views/model_views.xml',                 --> Vistas XML
+        'views/menu_views.xml',                  --> Menús separados
+    ],
+    'assets': {
+        'web.assets_backend': [
+            'module_name/static/src/js/*.js',    --> Carga de lógica JS
+            'module_name/static/src/xml/*.xml',  --> Plantillas OWL
+        ],
+    },
+    'installable': True,
+    'application': False,
+}
+
+----------------------------------------
+REGLAS DE ORO DEL EXPERTO
+----------------------------------------
+1. SEGURIDAD: El archivo CSV de seguridad debe ser el PRIMERO en 'data'.
+2. VERSIONAMIENTO: Usa siempre el prefijo de la versión de Odoo (17.0.x).
+3. DEPENDENCIAS: Si heredas una vista de 'sale', DEBES incluir 'sale' en 'depends'.
+4. IMÁGENES: El icono del módulo debe estar en: static/description/icon.png
+
+----------------------------------------
+COMANDOS ÚTILES (TERMINAL)
+----------------------------------------
+-u <modulo>   --> Actualiza el módulo y procesa cambios en el manifest
+-i <modulo>   --> Instala el módulo por primera vez desde consola
+
+========================================

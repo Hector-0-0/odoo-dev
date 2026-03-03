@@ -1,0 +1,95 @@
+========================================
+    GUÍA MAESTRA: DECORADORES @API
+========================================
+
+----------------------------------------
+DESCRIPCIÓN TÉCNICA
+----------------------------------------
+Los decoradores de la API definen el comportamiento de los métodos 
+frente a los cambios de datos. En Odoo 17/18, estos decoradores 
+optimizan la comunicación entre el cliente (browser) y el servidor.
+
+----------------------------------------
+1. @api.depends('field1', 'field2')
+----------------------------------------
+Propósito: Se usa exclusivamente para campos computados.
+Efecto: Indica a Odoo que debe recalcular el campo solo cuando 
+los campos listados en los argumentos cambien su valor.
+
+SINTAXIS:
+@api.depends('price_unit', 'quantity')
+def _compute_subtotal(self):
+    for record in self:
+        record.subtotal = record.price_unit * record.quantity
+
+----------------------------------------
+2. @api.onchange('field_id')
+----------------------------------------
+Propósito: Actualizar campos en la interfaz de usuario en tiempo real 
+mientras el usuario escribe (antes de guardar).
+Efecto: Solo funciona en la vista formulario (Frontend). No afecta 
+a las importaciones de datos o llamadas vía API.
+
+SINTAXIS:
+@api.onchange('partner_id')
+def _onchange_partner(self):
+    self.email = self.partner_id.email
+
+----------------------------------------
+3. @api.constrains('field_name')
+----------------------------------------
+Propósito: Validaciones de integridad del negocio (Python Constraints).
+Efecto: Se ejecuta al crear o escribir. Si la validación falla, 
+lanza una excepción y hace un rollback de la transacción.
+
+SINTAXIS:
+@api.constrains('age')
+def _check_age(self):
+    if self.age < 0:
+        raise ValidationError("La edad no puede ser negativa.")
+
+----------------------------------------
+4. @api.model
+----------------------------------------
+Propósito: Define métodos que no actúan sobre un recordset específico 
+sino sobre el modelo en general (estilo static method).
+Efecto: El 'self' no contiene registros, solo la referencia al modelo.
+
+SINTAXIS:
+@api.model
+def action_custom_init(self):
+    # Lógica global del modelo
+    pass
+
+----------------------------------------
+5. @api.returns('self')
+----------------------------------------
+Propósito: Asegura que el método devuelva un recordset del tipo 
+especificado, adaptando el resultado según el contexto (ID vs Objeto).
+
+----------------------------------------
+REGLAS DE ORO DEL EXPERTO
+----------------------------------------
+1. DEPENDS VS ONCHANGE: En Odoo moderno, se prefiere @api.depends 
+   incluso para campos que no se guardan (store=False), ya que es 
+   más robusto que @api.onchange.
+
+2. @API.ONCHANGE Y RELACIONES: Evita modificar campos One2many 
+   dentro de un onchange complejo, puede causar inconsistencias 
+   en el caché del navegador.
+
+3. MULTI-REGISTRO: Casi todos los decoradores actúan sobre un 
+   recordset. Siempre usa: "for record in self:". Si olvidas el 
+   bucle, el código fallará al procesar múltiples registros.
+
+4. EVITAR LÓGICA PESADA EN ONCHANGE: Como se ejecutan cada vez que 
+   el usuario pulsa una tecla o cambia de campo, un onchange 
+   lento destruye la experiencia de usuario (lag).
+
+----------------------------------------
+CASO ESPECIAL: @api.autovacuum
+----------------------------------------
+Utilizado para métodos que deben ejecutarse periódicamente para 
+limpiar tablas temporales (común en TransientModels).
+
+========================================

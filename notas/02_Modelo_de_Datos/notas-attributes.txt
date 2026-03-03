@@ -1,0 +1,76 @@
+========================================
+     GUÍA MAESTRA: ATRIBUTOS DE CAMPOS
+========================================
+
+----------------------------------------
+DESCRIPCIÓN TÉCNICA
+----------------------------------------
+Los atributos son argumentos opcionales que se pasan al definir un 
+campo. Controlan tres niveles: Base de Datos (SQL), Lógica (ORM) 
+y Presentación (Interfaz de Usuario).
+
+----------------------------------------
+1. ATRIBUTOS DE BASE DE DATOS (SQL)
+----------------------------------------
+required=True  --> Crea una restricción "NOT NULL" en PostgreSQL.
+index=True     --> Crea un índice B-Tree. Acelera búsquedas y filtros.
+default        --> Valor inicial. Puede ser un valor o una función.
+                 Ej: default=lambda self: self.env.user
+translate=True --> Permite guardar valores distintos por cada idioma.
+
+----------------------------------------
+2. ATRIBUTOS DE LÓGICA Y COMPORTAMIENTO
+----------------------------------------
+readonly=True  --> El campo no es editable (solo lectura).
+copy=False     --> El valor no se duplica al usar el botón "Duplicar".
+                 Vital para IDs únicos, números de serie o estados.
+tracking=True  --> Registra cada cambio en el chatter (Log de auditoría).
+                 Requiere heredar 'mail.thread'.
+groups         --> Restringe el acceso al campo a grupos específicos.
+                 Ej: groups="base.group_system"
+
+----------------------------------------
+3. ATRIBUTOS DE CAMPOS COMPUTADOS
+----------------------------------------
+compute        --> Nombre del método que calcula el valor (string).
+inverse        --> Método que permite editar un campo computado y 
+                 actualizar los campos de los que depende.
+search         --> Método que permite buscar en campos computados 
+                 que no están almacenados (store=False).
+store=True     --> Obliga a guardar el resultado en la base de datos.
+                 Sin esto, el cálculo se hace "al vuelo" cada vez.
+
+----------------------------------------
+4. ATRIBUTOS DE RELACIONES (MANY2ONE)
+----------------------------------------
+ondelete       --> Define qué pasa si se borra el registro relacionado.
+                 Valores: 'cascade', 'set null', 'restrict'.
+domain         --> Filtro dinámico para los registros seleccionables.
+                 Ej: domain=[('is_company', '=', True)]
+context        --> Envía datos extra al abrir la vista del registro vinculado.
+
+----------------------------------------
+REGLAS DE ORO DEL EXPERTO
+----------------------------------------
+1. USO DE INDEX: No indexar todo. Solo campos que uses frecuentemente
+   en filtros (Search views) o en dominios de búsqueda del ORM.
+
+2. STRING: El primer argumento de un campo siempre es el 'string' 
+   (la etiqueta visible). Si no se pone, Odoo usa el nombre técnico.
+   Correcto: name = fields.Char("Nombre")
+
+3. HELP: Siempre añade help="Breve explicación" en campos complejos.
+   Esto genera un tooltip cuando el usuario pasa el ratón por encima.
+
+4. REQUIRED EN BOOLEAN: Un campo Boolean NUNCA debe ser required=True,
+   ya que False (desmarcado) es un valor válido.
+
+----------------------------------------
+ATRIBUTOS EXCLUSIVOS DE v17/18
+----------------------------------------
+- precompute=True: Permite que el campo computado se calcule antes 
+  de que el registro se guarde en la DB (útil para flujos web).
+- recursive=True: Para campos computados que se llaman a sí mismos
+  en estructuras de árbol (ej: categorías padre/hijo).
+
+========================================

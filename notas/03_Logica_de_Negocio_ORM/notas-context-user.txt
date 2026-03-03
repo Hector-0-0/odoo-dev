@@ -1,0 +1,85 @@
+========================================
+   GUÍA MAESTRA: CONTEXTO Y PRIVILEGIOS
+========================================
+
+----------------------------------------
+DESCRIPCIÓN TÉCNICA
+----------------------------------------
+El 'Environment' (self.env) de Odoo es inmutable. Para cambiar el 
+usuario, el idioma o el contexto, se deben usar métodos que crean 
+una nueva instancia del entorno con las modificaciones deseadas.
+
+----------------------------------------
+1. MANEJO DEL CONTEXTO (with_context)
+----------------------------------------
+El context es un diccionario que viaja en toda la ejecución. Se usa 
+para pasar valores por defecto o banderas lógicas.
+
+SINTAXIS:
+# Ejemplo: Pasar un valor por defecto al crear un registro
+new_env = self.with_context(default_partner_id=self.id)
+
+# Ejemplo: Usar una bandera personalizada para saltar una validación
+if self.env.context.get('skip_check'):
+    return True
+
+----------------------------------------
+2. ELEVACIÓN DE PRIVILEGIOS (sudo)
+----------------------------------------
+Propósito: Ejecutar una acción saltándose las reglas de acceso (ACL) 
+y las reglas de registro (ir.rule).
+
+SINTAXIS:
+# Ejecuta el método con privilegios de Administrador (ID 1 por defecto)
+self.sudo().write({'state': 'confirmed'})
+
+# IMPORTANTE: sudo() devuelve un nuevo recordset. No modifica el actual.
+records_as_admin = self.sudo()
+
+----------------------------------------
+3. CAMBIO DE USUARIO (with_user)
+----------------------------------------
+Propósito: Ejecutar código como si fuera un usuario específico. Útil 
+para auditorías o para probar permisos de grupos.
+
+SINTAXIS:
+# Cambia el entorno al usuario con ID 5
+self.with_user(5).action_confirm()
+
+----------------------------------------
+4. CAMBIO DE COMPAÑÍA (with_company)
+----------------------------------------
+Vital en entornos multi-compañía (Multi-company). Asegura que los 
+cálculos de inventario o contabilidad usen la moneda y reglas de la 
+compañía indicada.
+
+SINTAXIS:
+self.with_company(company_id)._compute_totals()
+
+----------------------------------------
+REGLAS DE ORO DEL EXPERTO
+----------------------------------------
+1. EL PELIGRO DE SUDO(): Úsalo solo cuando sea estrictamente necesario 
+   (ej: un usuario portal que necesita crear un registro en una tabla 
+   a la que no tiene acceso directo). El abuso de sudo() crea agujeros 
+   de seguridad masivos.
+
+2. ENCADENAMIENTO: Puedes encadenar modificaciones de entorno.
+   self.with_user(5).with_context(mail_create_nosubscribe=True).sudo()
+
+3. PERSISTENCIA: Recuerda que self.env.context es de SÓLO LECTURA. 
+   No puedes hacer: self.env.context['key'] = 'value'.
+   Debes usar: self = self.with_context(key='value').
+
+4. EVITAR RE-BROWSE: Al usar sudo() o with_user(), el recordset 
+   devuelto apunta a la misma tabla pero con diferentes permisos.
+
+----------------------------------------
+USOS COMUNES EN v17/18
+----------------------------------------
+- 'active_id': ID del registro desde el que se lanzó un Wizard.
+- 'active_model': Nombre del modelo de origen.
+- 'force_company': Forzar una compañía en cálculos contables.
+- 'lang': Cambiar el idioma de renderizado de un reporte PDF.
+
+========================================

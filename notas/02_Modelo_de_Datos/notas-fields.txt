@@ -1,0 +1,82 @@
+========================================
+      GUÍA MAESTRA: CAMPOS EN ODOO
+========================================
+
+----------------------------------------
+DESCRIPCIÓN TÉCNICA
+----------------------------------------
+Los campos (fields) definen el tipo de dato que se almacenará en las 
+columnas de PostgreSQL. Se dividen en campos básicos, relacionales 
+y funcionales (computados).
+
+----------------------------------------
+1. CAMPOS BÁSICOS
+----------------------------------------
+Boolean      --> fields.Boolean() -> True/False (Checkbox)
+Integer      --> fields.Integer() -> Números enteros
+Float        --> fields.Float() -> Números decimales (ajustable por precisión)
+Monetary     --> fields.Monetary() -> Relacionado a una moneda (currency_id)
+Char         --> fields.Char() -> Texto corto (un renglón)
+Text         --> fields.Text() -> Texto largo (múltiples renglones)
+Html         --> fields.Html() -> Editor enriquecido (WYSIWYG)
+Date         --> fields.Date() -> Fecha (YYYY-MM-DD)
+Datetime     --> fields.Datetime() -> Fecha y hora (UTC por defecto)
+Selection    --> fields.Selection([('a', 'A'), ('b', 'B')]) -> Lista desplegable
+Binary       --> fields.Binary() -> Archivos (Imágenes, PDF)
+
+----------------------------------------
+2. CAMPOS RELACIONALES (EL PODER DE ODOO)
+----------------------------------------
+Many2one (N:1):
+   - Un registro de este modelo apunta a UN registro de otro.
+   - Crea una Foreign Key en la base de datos.
+   - partner_id = fields.Many2one('res.partner', string='Cliente')
+
+One2many (1:N):
+   - Relación inversa al Many2one. Muestra una lista de registros hijos.
+   - NO crea columna en DB, es una relación virtual basada en el Many2one.
+   - order_line_ids = fields.One2many('sale.order.line', 'order_id')
+
+Many2many (N:N):
+   - Muchos registros se relacionan con muchos registros.
+   - Crea una tabla intermedia automática en la base de datos.
+   - tag_ids = fields.Many2many('res.partner.category', string='Etiquetas')
+
+----------------------------------------
+3. CAMPOS COMPUTADOS (DINÁMICOS)
+----------------------------------------
+Campos que calculan su valor basándose en otros mediante una función.
+
+SINTAXIS:
+total = fields.Float(compute='_compute_total', store=True)
+
+@api.depends('price', 'tax')
+def _compute_total(self):
+    for record in self:
+        record.total = record.price + record.tax
+
+----------------------------------------
+REGLAS DE ORO DEL EXPERTO
+----------------------------------------
+1. STORE=TRUE: Un campo computado NO es buscable ni filtrable en vistas 
+   a menos que uses 'store=True'. Esto lo guarda físicamente en DB.
+
+2. TRACKING=TRUE: Activa el log de cambios en el chatter. Vital para 
+   auditoría (requiere heredar 'mail.thread' en el modelo).
+
+3. ON-DELETE: En Many2one, decide qué pasa si borras el padre.
+   - 'cascade': Borra también el hijo.
+   - 'set null': Deja el campo vacío.
+   - 'restrict': Impide borrar si hay registros vinculados.
+
+4. SELECTION: Usa Selection para estados (states). Es más rápido que 
+   un modelo aparte si las opciones son fijas.
+
+----------------------------------------
+DIFERENCIA ENTRE FLOAT Y MONETARY
+----------------------------------------
+- Float: Para medidas físicas (peso, volumen).
+- Monetary: Para dinero. Respeta automáticamente los decimales de la 
+  moneda configurada en la empresa y añade el símbolo en la vista.
+
+========================================
