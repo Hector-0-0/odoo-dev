@@ -1,0 +1,13 @@
+<odoo>
+    <record id="report_libro_reclamaciones" model="ir.actions.report">
+        <field name="name">Libro de reclamaciones</field>
+        <field name="model">libro.reclamaciones</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">l10n_pe_libro_reclamaciones.report_libro_reclamaciones_template</field>
+        <field name="report_file">l10n_pe_libro_reclamaciones.report_libro_reclamaciones_template</field>
+        <field name="print_report_name">('Reclamo - %s' % (object.name))</field>
+        <field name="binding_type">report</field>
+        <field name="binding_model_id" ref="l10n_pe_libro_reclamaciones.model_libro_reclamaciones"/>
+        <field name="paperformat_id" ref="base.paperformat_euro"/>
+    </record>
+</odoo>

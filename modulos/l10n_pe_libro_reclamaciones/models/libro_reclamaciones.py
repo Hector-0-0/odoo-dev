@@ -8,6 +8,7 @@ PRIORITIES = [('0', 'Baja'), ('1', 'Media'), ('2', 'Alta'), ('3', 'Urgente')]
 class LibroReclamaciones(models.Model):
     _name = 'libro.reclamaciones' # Libro de Reclamaciones
     _description = 'Libro de Reclamaciones'
+    _inherit = ['mail.thread.cc', 'mail.activity.mixin']
     name = fields.Char(string="Código")
     
     state = fields.Selection(
@@ -26,7 +27,7 @@ class LibroReclamaciones(models.Model):
     consumer_company_document = fields.Char(string="N° R.U.C")
     consumer_name = fields.Char(string="Nombres")
     consumer_lastname = fields.Char(string="Apellidos")
-    consume_email = fields.Char(string="Correo Electrónico")
+    consumer_email = fields.Char(string="Correo Electrónico")
     consumer_document_type = fields.Selection(selection=[('1', 'DNI'), ('4','C.E.'), ('7','Pasaporte')], string="Tipo de Documento", default='1')
     consumer_document = fields.Char(string="Número de Documento")
     consumer_phone = fields.Char(string="Número de Teléfono")

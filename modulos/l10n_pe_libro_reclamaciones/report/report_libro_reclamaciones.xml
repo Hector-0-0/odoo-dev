@@ -1,0 +1,203 @@
+<odoo>
+    <data>
+        <template id="l10n_pe_libro_reclamaciones.report_libro_reclamaciones_template">
+            <t t-call="web.html_container">
+                <t t-foreach="docs" t-as="o">
+                    <t t-call="web.external_layout">
+                        <div class="container">
+                            <div class="row">
+                                <div class="col-12" style="text-align:center">
+                                    <strong style="font-size:24px">
+                                        <t t-esc="'RECLAMACIÓN N° {}'.format(o.name)"/>
+                                    </strong>
+                                </div>
+                            </div>
+                        </div>
+
+
+                        <!-- IDENTIFICACIÓN DEL CONSUMIDOR RECLAMANTE -->
+                        <div class="container mt-2" style="font-size:14px">
+                            <div class="row">
+                                <div class="col-12">
+                                    <strong>IDENTIFICACIÓN DEL CONSUMIDOR RECLAMANTE:</strong>
+                                </div>
+                            </div>
+                            <br/>
+                            <br/>
+                            <div class="row pl-4">
+                                <div class="col-4">
+                                    <strong>Tipo de cliente:</strong><br/>
+                                    <span t-field="o.consumer_type"/>
+                                </div>
+                                <div class="col-4" t-if="o.consumer_type == 'company'">
+                                    <strong>Razón Social:</strong><br/>
+                                    <span t-field="o.consumer_company_name"/>
+                                </div>
+                                <div class="col-4" t-if="o.consumer_type == 'company'">
+                                    <strong>N° R.U.C.:</strong><br/>
+                                    <span t-field="o.consumer_company_document"/>
+                                </div>
+                            </div>
+                            <div class="row pl-4 mt-1">
+                                <div class="col-4">
+                                    <strong>Nombres:</strong><br/>
+                                    <span t-field="o.consumer_name"/>
+                                </div>
+                                <div class="col-4">
+                                    <strong>Apellidos:</strong><br/>
+                                    <span t-field="o.consumer_lastname"/>
+                                </div>
+                                <div class="col-4">
+                                    <strong>E-mail:</strong><br/>
+                                    <span t-field="o.consumer_email"/>
+                                </div>
+                            </div>
+
+                            <div class="row pl-4 mt-1">
+                                <div class="col-4">
+                                    <strong>Tipo de documento:</strong><br/>
+                                    <span t-field="o.consumer_document_type"/>
+                                </div>
+                                <div class="col-4">
+                                    <strong>Número de documento:</strong><br/>
+                                    <span t-field="o.consumer_document"/>
+                                </div>
+                                <div class="col-4">
+                                    <strong>Teléfono:</strong><br/>
+                                    <span t-field="o.consumer_phone"/>
+                                </div>
+                            </div>
+                            
+                            <div class="row pl-4 mt-1">
+                                <div class="col-12">
+                                    <strong>Dirección:</strong><br/>
+                                    <span t-field="o.consumer_address"/>
+                                </div>
+                            </div>
+
+                            <div class="row pl-4 mt-1">
+                                <div class="col-4">
+                                    <strong>Departamento:</strong><br/>
+                                    <span t-field="o.consumer_state_id"/>
+                                </div>
+                                <div class="col-4">
+                                    <strong>Provincia:</strong><br/>
+                                    <span t-field="o.consumer_province_id"/>
+                                </div>
+                                <div class="col-4">
+                                    <strong>Distrito:</strong><br/>
+                                    <span t-field="o.consumer_district_id"/>
+                                </div>
+                            </div>
+                        </div>
+                        <br/>
+                        <br/>
+
+
+                        <!-- DATOS DEL PADRE, MADRE O TUTOR -->
+                        <br t-if="o.consumer_younger"/>
+                        <div class="container mt-2" style="font-size:14px" t-if="o.consumer_younger">
+                            <div class="row">
+                                <div class="col-12">
+                                    <!-- <strong style="font-size:16px">DATOS DEL PADRE, MADRE O TUTOR:</strong> -->
+                                    <strong style="font-size:16px">DATOS DEL PADRE, MADRE O TUTOR:</strong>
+                                </div>
+                            </div>
+                            <div class="row pl-4 mt-1">
+                                <div class="col-4">
+                                    <strong>Nombres:</strong><br/>
+                                    <span t-field="o.consumer_younger_name"/>
+                                </div>
+                                <div class="col-4">
+                                    <strong>Apellidos:</strong><br/>
+                                    <span t-field="o.consumer_younger_lastname"/>
+                                </div>
+                                <div class="col-4">
+                                    <strong>DNI/CE:</strong><br/>
+                                    <span t-field="o.consumer_younger_document"/>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- IDENTIFICACIÓN DEL BIEN CONTRATADO -->
+                        <br/>
+                        <br/>
+                        <div class="container mt-2" style="font-size:14px">
+                            <div class="row">
+                                <div class="col-12">
+                                    <!-- <strong style="font-size:16px">IDENTIFICACIÓN DEL BIEN CONTRATADO:</strong> -->
+                                    <strong>IDENTIFICACIÓN DEL BIEN CONTRATADO:</strong>
+                                </div>
+                            </div>
+                        
+                            <div class="row pl-4 mt-1">
+                                <div class="col-4">
+                                    <strong>Tipo de producto:</strong><br/>
+                                    <span t-field="o.product_type"/>
+                                </div>
+                                <div class="col-4">
+                                    <strong>Código de producto:</strong><br/>
+                                    <span t-field="o.product_id"/>
+                                </div>
+                                <div class="col-4">
+                                    <strong>Producto:</strong><br/>
+                                    <span t-field="o.product_name"/>
+                                </div>
+                            </div>
+                        
+                            <div class="row pl-4 mt-1">
+                                <div class="col-4">
+                                    <strong>Número de venta:</strong><br/>
+                                    <span t-field="o.order_name"/>
+                                </div>
+                                <div class="col-4">
+                                    <strong>Fecha de venta:</strong><br/>
+                                    <span t-field="o.date_order"/>
+                                </div>
+                            </div>
+                        </div>
+
+
+                        <!-- DETALLE DE RECLAMO O QUEJA -->
+                        <br/>
+                        <br/>
+                        <div class="container mt-2" style="font-size:14px">
+                            <div class="row">
+                                <div class="col-12">
+                                    <!-- <strong style="font-size:16px">DETALLE DE RECLAMO O QUEJA:</strong> -->
+                                    <strong>DETALLE DE RECLAMO O QUEJA:</strong>
+                                </div>
+                            </div>
+                            <div class="row pl-4 mt-1">
+                                <div class="col-4">
+                                    <strong>Tipo de reclamo:</strong><br/>
+                                    <span t-field="o.claim_type"/>
+                                </div>
+                                <div class="col-4">
+                                    <strong>Fecha de reclamo:</strong><br/>
+                                    <span t-field="o.create_date"/>
+                                </div>
+                                <div class="col-4">
+                                    <strong>Monto de reclamo:</strong><br/>
+                                    <span t-field="o.claim_amount"/>
+                                </div>
+                            </div>
+                            <div class="row pl-4 mt-1">
+                                <div class="col-12">
+                                    <strong>Detalle de reclamo:</strong><br/>
+                                    <span t-field="o.claim_detail"/>
+                                </div>
+                            </div>
+                            <div class="row pl-4 mt-1">
+                                <div class="col-12">
+                                    <strong>Solicitud de reclamo:</strong><br/>
+                                    <span t-field="o.claim_request"/>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </t>
+            </t>
+        </template>
+    </data>
+</odoo>

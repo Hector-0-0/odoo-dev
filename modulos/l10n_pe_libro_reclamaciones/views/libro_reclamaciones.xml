@@ -60,12 +60,12 @@
                             <field name="consumer_lastname" invisible="consumer_type != 'individual'"
                                                                 required="consumer_type == 'individual'"
                                                                 readonly="state!='new'"/>
-                            <field name="consume_email" readonly="state!='new'"/>
+                            <field name="consumer_email" readonly="state!='new'"/>
                             <field name="consumer_document_type" widget="radio" options="{'horizontal': 1}"/>
                             <field name="consumer_document"/>
+                            <field name="consumer_phone" placeholder="+51 999999999"/>
                         </group>
                         <group>
-                            <field name="consumer_phone" placeholder="+51 999999999"/>
                             <field name="consumer_address" placeholder="Avenida, Calle ..."/>
                             <field name="consumer_country_id"
                                         options="{'no_open':1,'no_create':1,'no_creat_edit':1}"/>
@@ -87,11 +87,15 @@
                         </group>
                     </group>
                     <group string="DATOS DEL BIEN CONTRATADO">
-                        <field name="product_type" widget="radio" options="{'horizontal': 1}"/>
-                        <field name="product_name"/>
-                        <field name="order_name"/>
-                        <field name="product_id"/>
-                        <field name="date_order"/>
+                        <group>
+                            <field name="product_type" widget="radio" options="{'horizontal': 1}"/>
+                            <field name="product_name"/>
+                            <field name="product_id"/>
+                        </group>
+                        <group>
+                            <field name="order_name"/>
+                            <field name="date_order"/>
+                        </group>    
                     </group>
                     <group string="DETALLE DEL RECLAMO O QUEJA">
                         <field name="claim_type" widget="radio" options="{'horizontal': 1}"/>
@@ -101,11 +105,19 @@
                         <field name="currency_id"/>
                     </group>
                 </sheet>
+                <chatter reload_on_post="True"/>
             </form>
         </field>
     </record>
 
     <!--ACCION DE VENTANA-->
+    <record id="action_libro_reclamacion_settings" model="ir.actions.act_window">
+        <field name="name">Ajustes</field>
+        <field name="res_model">res.config.settings</field>
+        <field name="view_mode">form</field>
+        <field name="target">current</field>
+        <field name="context">{'module': 'libro_reclamaciones'}</field>
+    </record>
 
     <record id="action_view_libro_reclamaciones" model="ir.actions.act_window">
         <field name="name">Registros</field>
@@ -120,9 +132,14 @@
                 name="Libro de Reclamaciones" 
                 sequence="21"/>
 
-    <menuitem id="menu_registro_reclamos" 
-                name="Registros"
-                parent="menu_main_libro_reclamaciones" 
-                action="action_view_libro_reclamaciones" />
+        <menuitem id="menu_registro_reclamos" 
+                    name="Registros"
+                    parent="menu_main_libro_reclamaciones" 
+                    action="action_view_libro_reclamaciones" />
+
+        <menuitem id="menu_action_settings"
+                    name="Ajustes"
+                    parent="menu_main_libro_reclamaciones"
+                    action="action_libro_reclamacion_settings" />
 
 </odoo>

@@ -20,5 +20,8 @@ cumplimiento legal y mejorando la atención al cliente.
         'security/ir_model_access.xml',
         'security/ir_rule.xml',
         'views/libro_reclamaciones.xml',
+        'views/res_config_settings.xml',
+        'report/report.xml',
+        'report/report_libro_reclamaciones.xml',
     ],
 }
