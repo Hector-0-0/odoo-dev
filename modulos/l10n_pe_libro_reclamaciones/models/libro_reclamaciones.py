@@ -155,3 +155,15 @@ class LibroReclamaciones(models.Model):
             'type': 'ir.actions.client',
             'tag': 'reload',
         }
+        
+    def action_claim_sent(self):
+        template= self.env.ref('l10n_pe_libro_reclamaciones.mail_template_libro_reclamaciones', raise_if_not_found=False)
+        context={"default_template_id": template.id if template else False}
+        return {
+            "name": "Enviar detalle de Reclamo",
+            "type": "ir.actions.act_window",
+            "res_model": "mail.compose.message",
+            "view_mode": "form",
+            "target": "new",
+            "context": context
+        }

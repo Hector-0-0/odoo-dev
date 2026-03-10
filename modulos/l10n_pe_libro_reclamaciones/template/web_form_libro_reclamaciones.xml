@@ -1,0 +1,405 @@
+<odoo>
+
+    <template id="libro_reclamaciones">
+        <t t-call="website.layout">
+            <div class="wrap">
+                <div class="container">
+                    <form role="form" action="/libro-reclamaciones" method="POST">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                        <div class="offset-md-2 col-xl-8 col-lg-8 mt-4">
+                            <div class="form-group row form-field o_website_form_custom o_website_form_required_custom">
+                                <h1 class="h3 mb-0 text-darkblue font-weight-bold">Libro de Reclamaciones</h1>
+                                <p><t t-esc="company.name"/><br/>
+                                    <t t-esc="company.street"/><br/>
+                                    N° RUC <t t-esc="company.vat"/></p>
+                            </div>
+                        </div>
+
+                        <div class="libro-reclamaciones">
+                            <div class="offset-md-2 col-xl-8 col-lg-8 mt-4">
+                                <hr class="my-4"/>
+                                <h6 class="border-bottom font-weight-bold mt-5 mb-2">IDENTIFICACIÓN DEL CONSUMIDOR RECLAMANTE</h6>
+                                <div class="row g-3">
+                                    <div class="d-flex justify-content-center pt-3">
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" name="consumer_type" id="consumer_type_individual" t-att-checked="claim.get('consumer_type','individual') == 'individual'" value="individual"/>
+                                            <label class="form-check-label  pl-1 pr-2" for="consumer_type_individual">
+                                                Persona Natural
+                                            </label>
+                                        </div>
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" name="consumer_type" id="consumer_type_company" t-att-checked="claim.get('consumer_type','individual') == 'company'" value="company"/>
+                                            <label class="form-check-label  pl-1 pr-2" for="consumer_type_company">
+                                                Empresa
+                                            </label>
+                                        </div>
+                                    </div>
+                                    
+                                    <!--CAMPOS SI SON EMPRESA-->
+                                    <div id="consumer_company_name" t-attf-class="col-12 pt-3 #{'d-none' if claim.get('consumer_type','individual') == 'individual' else ''}" >
+                                        <div class="form-floating">
+                                            <input type="text" class="form-control"
+                                                    name="consumer_company_name" placeholder="Razón Social"
+                                                    t-att-value="'consumer_company_name' in claim and claim['consumer_company_name']"/>
+                                            <label for="consumer_company_name" class="form-label">Razón Social*</label>
+                                        </div>
+                                        <div t-attf-class="invalid-feedback #{'d-block' if errors.get('consumer_company_name') else ''}" >
+                                            <t t-esc="errors.get('consumer_company_name')"/>
+                                        </div>
+                                    </div>
+
+                                    <div id="consumer_company_document" t-attf-class="col-12 pt-3 #{'d-none' if claim.get('consumer_type','individual') == 'individual' else ''}" >
+                                        <div class="form-floating">
+                                            <input type="text" class="form-control"
+                                                    name="consumer_company_document" placeholder="N° R.U.C.*"
+                                                    t-att-value="'consumer_company_document' in claim and claim['consumer_company_document']"/>
+                                            <label for="consumer_company_document" class="form-label">N° R.U.C.*</label>
+                                        </div>
+                                        <div t-attf-class="invalid-feedback #{'d-block' if errors.get('consumer_company_document') else ''}" >
+                                            <t t-esc="errors.get('consumer_company_document')"/>
+                                        </div>
+                                    </div>
+                                    
+                                    <!--DATOS DEL PERSONA QUE RECLAMA-->
+                                    <div class="col-md-4 col-12 pt-3">
+                                        <div class="form-floating">
+                                            <input type="text" class="form-control"
+                                                    name="consumer_name" placeholder="Nombres"
+                                                    t-att-value="'consumer_name' in claim and claim['consumer_name']"/>
+                                            <label for="consumer_name" class="form-label">Nombres*</label>
+                                        </div>
+                                        <div t-attf-class="invalid-feedback #{'d-block' if errors.get('consumer_name') else ''}" >
+                                            <t t-esc="errors.get('consumer_name')"/>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-md-4 col-12 pt-3">
+                                        <div class="form-floating">
+                                            <input type="text" class="form-control"
+                                                    name="consumer_lastname" placeholder="Apellidos"
+                                                    t-att-value="'consumer_lastname' in claim and claim['consumer_lastname']"/>
+                                            <label for="consumer_lastname" class="form-label">Apellidos*</label>
+                                        </div>
+                                        <div t-attf-class="invalid-feedback #{'d-block' if errors.get('consumer_lastname') else ''}" >
+                                            <t t-esc="errors.get('consumer_lastname')"/>
+                                        </div>
+                                    </div>
+
+                                    <!--CORREO-->
+                                    <div class="col-md-4 col-12 pt-3">
+                                        <div class="form-floating">
+                                            <input type="email" class="form-control"
+                                                    name="consumer_email" placeholder="E-mail"
+                                                    t-att-value="'consumer_email' in claim and claim['consumer_email']"/>
+                                            <label for="consumer_email" class="form-label">E-mail*</label>
+                                        </div>
+                                        <div t-attf-class="invalid-feedback #{'d-block' if errors.get('consumer_email') else ''}" >
+                                            <t t-esc="errors.get('consumer_email')"/>
+                                        </div>
+                                    </div>
+                                    
+                                    <!--TIPO DE DOCUMENTO-->
+                                    <div class="col-md-4 col-6 pt-3">
+                                        <div class="form-floating">
+                                            <select class="form-select" name="consumer_document_type">
+                                                <option value="1" t-att-selected="'1' == claim.get('consumer_document_type','1')">DNI</option>
+                                                <option value="4" t-att-selected="'4' == claim.get('consumer_document_type')">CE</option>
+                                                <option value="7" t-att-selected="'7' == claim.get('consumer_document_type')">Pasaporte</option>
+                                            </select>
+                                            <label for="consumer_document_type" class="form-label">Tipo de Documento*</label>
+                                        </div>
+                                        <div t-attf-class="invalid-feedback #{'d-block' if errors.get('consumer_document_type') else ''}" >
+                                            <t t-esc="errors.get('consumer_document_type')"/>
+                                        </div>
+                                    </div>
+
+                                    <!--NUMERO DE DOCUMENTO-->
+                                    <div class="col-md-4 col-6 pt-3">
+                                        <div class="form-floating">
+                                            <input type="text" class="form-control" name="consumer_document"
+                                                    placeholder="Número de Documento"
+                                                    t-att-value="'consumer_document' in claim and claim['consumer_document']"/>
+                                            <label for="consumer_document" class="form-label">Número de Documento*</label>
+                                        </div>
+                                        <div t-attf-class="invalid-feedback #{'d-block' if errors.get('consumer_document') else ''}" >
+                                            <t t-esc="errors.get('consumer_document')"/>
+                                        </div>
+                                    </div>
+                                    
+
+                                    <!--TELÉFONO-->
+                                    <div class="col-md-4 col-12 pt-3">
+                                        <div class="form-floating">
+                                            <input type="phone" class="form-control"
+                                                    name="consumer_phone" placeholder="Teléfono"
+                                                    t-att-value="'consumer_phone' in claim and claim['consumer_phone']"/>
+                                            <label for="consumer_phone" class="form-label">Teléfono*</label>
+                                        </div>
+                                        <div t-attf-class="invalid-feedback #{'d-block' if errors.get('consumer_phone') else ''}" >
+                                            <t t-esc="errors.get('consumer_phone')"/>
+                                        </div>
+                                    </div>
+
+                                    <!--DIRECCIÓN-->
+                                    <div class="col-12 pt-3">
+                                        <div class="form-floating">
+                                            <input type="text" class="form-control"
+                                                    name="consumer_address" placeholder="Dirección*"
+                                                    t-att-value="'consumer_address' in claim and claim['consumer_address']"/>
+                                            <label for="consumer_address" class="form-label">Dirección*</label>
+                                        </div>
+                                        <div t-attf-class="invalid-feedback #{'d-block' if errors.get('consumer_address') else ''}" >
+                                            <t t-esc="errors.get('consumer_address')"/>
+                                        </div>
+                                    </div>
+                                    
+                                    <!--DEPARTAMENTO -->
+                                    <div class="col-md-4 col-6 pt-3">
+                                        <div class="form-floating">
+                                            <select class="form-select" name="consumer_state_id">
+                                                <option t-att-selected="False == claim.get('consumer_state_id',False)" disabled="">Seleccionar</option>
+                                                <t t-foreach="states" t-as="state">
+                                                    <option t-att-value="state.id" t-att-selected="state.id == claim.get('consumer_state_id',-1)">
+                                                        <t t-esc="state.name"/>
+                                                    </option>
+                                                </t>
+                                            </select>
+                                            <label for="consumer_state_id" class="form-label">Departamento*</label>
+                                        </div>
+                                        <div t-attf-class="invalid-feedback #{'d-block' if errors.get('consumer_state_id') else ''}" >
+                                            <t t-esc="errors.get('consumer_state_id')"/>
+                                        </div>
+                                    </div>
+
+                                    <!--PROVINCIA-->
+                                    <div class="col-md-4 col-6 pt-3">
+                                        <div class="form-floating">
+                                            <select class="form-select" name="consumer_province_id">
+                                                <option selected="" disabled="">Seleccionar</option>
+                                                <option t-if="'consumer_province_id' in claim"
+                                                        t-att-value='claim.get("consumer_province_id")'
+                                                        selected='1'>
+                                                        <t t-esc='claim.get("consumer_province_name")'></t>
+                                                </option>
+                                            </select>
+                                            <label for="consumer_province_id" class="form-label">Provincia*</label>
+                                        </div>
+                                        <div t-attf-class="invalid-feedback #{'d-block' if errors.get('consumer_province_id') else ''}" >
+                                            <t t-esc="errors.get('consumer_province_id')"/>
+                                        </div>
+                                    </div>
+
+                                    <!--DISTRITO-->
+                                    <div class="col-md-4 col-6 pt-3">
+                                        <div class="form-floating">
+                                            <select class="form-select" name="consumer_district_id">
+                                                <option selected="" disabled="">Seleccionar</option>
+                                                <option t-if="'consumer_district_id' in claim"
+                                                        t-att-value='claim.get("consumer_district_id")'
+                                                        selected='1'>
+                                                        <t t-esc='claim.get("consumer_district_name")'></t>
+                                                </option>
+                                            </select>
+                                            <label for="consumer_district_id" class="form-label">Distrito*</label>
+                                        </div>
+                                        <div t-attf-class="invalid-feedback #{'d-block' if errors.get('consumer_district_id') else ''}" >
+                                            <t t-esc="errors.get('consumer_district_id')"/>
+                                        </div>
+                                    </div>
+
+                                    <div class="d-flex justify-content-center pt-3">
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="checkbox"
+                                                    name="consumer_younger" id="consumer_younger"
+                                                    t-att-checked="'consumer_younger' in claim"/>
+                                            <label class="form-check-label pl-1" for="consumer_younger">Soy menor de edad</label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <h6 t-attf-class="border-bottom font-weight-bold mt-5 mb-2  #{'d-none' if 'consumer_younger' not in claim else ''}" 
+                                        id="consumer_younger_title">DATOS DEL PADRE, MADRE O TUTOR</h6>
+                                <div t-attf-class="row g-3  #{'d-none' if 'consumer_younger' not in claim else ''}" id="consumer_younger_content">
+                                    <span>Si eres menor de edad, es necesario llenar los siguientes campos:</span>
+                                    <div class="col-md-6 col-12 pt-3">
+                                        <div class="form-floating">
+                                            <input type="text" class="form-control"
+                                                    name="consumer_younger_name" placeholder="Nombres*"
+                                                    t-att-value="'consumer_younger_name' in claim and claim['consumer_younger_name']"/>
+                                            <label for="consumer_younger_name" class="form-label">Nombres*</label>
+                                        </div>
+                                        <div t-attf-class="invalid-feedback #{'d-block' if errors.get('consumer_younger_name') else ''}" >
+                                            <t t-esc="errors.get('consumer_younger_name')"/>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6 col-12 pt-3">
+                                        <div class="form-floating">
+                                            <input type="text" class="form-control"
+                                                    name="consumer_younger_lastname" placeholder="Apellidos*"
+                                                    t-att-value="'consumer_younger_lastname' in claim and claim['consumer_younger_lastname']"/>
+                                            <label for="consumer_younger_lastname" class="form-label">Apellidos*</label>
+                                        </div>
+                                        <div t-attf-class="invalid-feedback #{'d-block' if errors.get('consumer_younger_lastname') else ''}" >
+                                            <t t-esc="errors.get('consumer_younger_lastname')"/>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6 col-12 pt-3">
+                                        <div class="form-floating">
+                                            <input type="text" class="form-control"
+                                                    name="consumer_younger_document" placeholder="DNI/CE*"
+                                                    t-att-value="'consumer_younger_document' in claim and claim['consumer_younger_document']"/>
+                                            <label for="consumer_younger_document" class="form-label">DNI/CE*</label>
+                                        </div>
+                                        <div t-attf-class="invalid-feedback #{'d-block' if errors.get('consumer_younger_document') else ''}" >
+                                            <t t-esc="errors.get('consumer_younger_document')"/>
+                                        </div>
+                                    </div>
+                                </div>
+
+
+                                <h6 class="border-bottom font-weight-bold mt-5 mb-2">IDENTIFICACIÓN DEL BIEN CONTRATADO</h6>
+                                <div class="row g-3">
+                                    <div class="col-6 pt-3">
+                                        <div class="form-floating">
+                                            <select class="form-select" name="product_type">
+                                                <option selected="" disabled="">Seleccionar</option>
+                                                <option value="product" t-att-selected="'product' == claim.get('product_type','product')">Producto</option>
+                                                <option value="service" t-att-selected="'service' == claim.get('product_type','product')">Servicio</option>
+                                            </select>
+                                            <label for="product_type" class="form-label">Relacionada a*</label>
+                                        </div>
+                                        <div t-attf-class="invalid-feedback #{'d-block' if errors.get('product_type') else ''}" >
+                                            <t t-esc="errors.get('product_type')"/>
+                                        </div>
+                                    </div>
+                                    <div class="col-6 pt-3">
+                                        <div class="form-floating">
+                                            <input type="text" class="form-control"
+                                                    name="product_code" placeholder="Código del Producto"
+                                                    t-att-value="'product_code' in claim and claim['product_code']"/>
+                                            <label for="product_code" class="form-label">Código del Producto/Servicio</label>
+                                        </div>
+                                        <div t-attf-class="invalid-feedback #{'d-block' if errors.get('product_code') else ''}" >
+                                            <t t-esc="errors.get('product_code')"/>
+                                        </div>
+                                    </div>
+                                    <div class="col-6 pt-3">
+                                        <div class="form-floating">
+                                            <input type="text" class="form-control"
+                                                    name="order_name" placeholder="Nº Pedido"
+                                                    t-att-value="'order_name' in claim and claim['order_name']"/>
+                                            <label for="order_name" class="form-label">Nº Pedido</label>
+                                        </div>
+                                        <div t-attf-class="invalid-feedback #{'d-block' if errors.get('order_name') else ''}" >
+                                            <t t-esc="errors.get('order_name')"/>
+                                        </div>
+                                    </div>
+                                    <div class="col-6 pt-3">
+                                        <div class="input-group flex-nowrap form-floating">
+                                            <input type="date" class="form-control"
+                                                    name="date_order" placeholder="Fecha de Compra"
+                                                    aria-describedby="addon-wrapping"
+                                                    t-att-value="'date_order' in claim and claim['date_order']"/>
+                                            <label for="date_order" class="form-label">Fecha de Compra</label>
+                                            <span>
+                                                <i class="fa fa-calendar-alt"></i>
+                                            </span>
+                                        </div>
+                                        <div t-attf-class="invalid-feedback #{'d-block' if errors.get('date_order') else ''}" >
+                                            <t t-esc="errors.get('date_order')"/>
+                                        </div>
+                                    </div>
+                                    <div class="col-12 pt-3">
+                                        <div class="form-floating">
+                                            <textarea type="text" class="form-control"
+                                                        name="product_name" placeholder="Descripción del Producto / Servicio" rows="3"
+                                                        style="height: 100px;"
+                                                        ><t t-esc="'product_name' in claim and claim['product_name']"/></textarea>
+                                            <label for="product_name" class="form-label">Descripción del Producto / Servicio*</label>
+                                        </div>
+                                        <div t-attf-class="invalid-feedback #{'d-block' if errors.get('product_name') else ''}" >
+                                            <t t-esc="errors.get('product_name')"/>
+                                        </div>
+                                    </div>
+                                </div>
+
+
+                            <h6 class="border-bottom font-weight-bold mt-5 mb-2">DETALLE DE RECLAMO O QUEJA</h6>
+                            <div class="row g-3">
+                                <div class="col-6 pt-3">
+                                    <div class="form-floating">
+                                        <select class="form-select" name="claim_type" >
+                                            <option disabled="">Seleccionar</option>
+                                            <option value="reclamo" t-att-selected="'reclamo' == claim.get('claim_type','reclamo')">Reclamo</option>
+                                            <option value="queja" t-att-selected="'queja' == claim.get('claim_type','reclamo')">Queja</option>
+                                        </select>
+                                        <label for="claim_type" class="form-label">Tipo de Reclamación*</label>
+                                    </div>
+                                    <div t-attf-class="invalid-feedback #{'d-block' if errors.get('claim_type') else ''}" >
+                                        <t t-esc="errors.get('claim_type')"/>
+                                    </div>
+                                </div>
+
+                                <div class="col-6 pt-3">
+                                    <div class="form-floating">
+                                        <input type="number" class="form-control"
+                                                name="claim_amount" placeholder="Monto Reclamado"
+                                                t-att-value="'claim_amount' in claim and claim['claim_amount']"/>
+                                        <label for="claim_amount" class="form-label">Monto Reclamado*</label>
+                                    </div>
+                                    <div t-attf-class="invalid-feedback #{'d-block' if errors.get('claim_amount') else ''}" >
+                                        <t t-esc="errors.get('claim_amount')"/>
+                                    </div>
+                                </div>
+
+                                <div class="col-12 pt-3">
+                                    <div class="form-floating">
+                                        <textarea style="height: 120px;" type="textarea" class="form-control"
+                                                name="claim_detail" placeholder="Detalles del Reclamo" rows="3"><t t-esc="'claim_detail' in claim and claim['claim_detail']"/></textarea>
+                                        <label for="claim_detail" class="form-label">Detalles del Reclamo*</label>
+                                    </div>
+                                    <div t-attf-class="invalid-feedback #{'d-block' if errors.get('claim_detail') else ''}" >
+                                        <t t-esc="errors.get('claim_detail')"/>
+                                    </div>
+                                </div>
+
+                                <div class="col-12 pt-3">
+                                    <div class="form-floating">
+                                        <textarea style="height: 120px;" type="textarea" class="form-control"
+                                                    name="claim_request" placeholder="Petición del Cliente" rows="3"
+                                                    ><t t-esc="'claim_request' in claim and claim['claim_request']"/></textarea>
+                                        <label for="claim_request" class="form-label">Petición del Cliente*</label>
+                                    </div>
+                                    <div t-attf-class="invalid-feedback #{'d-block' if errors.get('claim_request') else ''}" >
+                                        <t t-esc="errors.get('claim_request')"/>
+                                    </div>
+                                </div>
+                                    
+                                <div class="col-12 pt-3">
+                                    <div class="row">
+                                        <div class="col-6"><span><strong>RECLAMO:</strong>Disconformidad relacionada a los productos o servicios.</span></div>
+                                        <div class="col-6"><span><strong>QUEJA:</strong>Disconformidad NO relacionada a los productos o servicios; o, malestar o descontento respecto a la atención al público.</span></div>
+                                    </div>
+                                    <div class="row">
+                                        <span class="text-danger">* Campos obligatorios</span>
+                                        <!-- <span>La formulación del reclamo no impide recurrir a otras vías de solución de controversias ni es requesitio previo para imponer una denuncia frente el INDECOPI.</span>
+                                        <span>El proveedor deberá dar respuesta al reclamo en un plazo no mayor a treinta (30) días de calendario, pudiendo ampliar el plazo hasta por treinta (30) días más, previa comunicación al consumidor.</span> -->
+                                    </div>
+                                </div>
+
+
+                                <div class="input-group flex-nowrap pt-3 justify-content-center">
+                                    <button id="crear_reclamo" type="submit" class="btn btn-primary col">Enviar</button>
+                                </div>
+                            </div>
+                            <hr class="my-4"/>
+
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </t>
+    </template>
+
+</odoo>

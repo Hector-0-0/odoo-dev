@@ -1,0 +1,27 @@
+<odoo>
+
+    <record id="mail_template_libro_reclamaciones" model="mail.template">
+        <field name="name">Plantilla de libro de reclamaciones</field>
+        <field name="model_id" ref="l10n_pe_libro_reclamaciones.model_libro_reclamaciones"/>
+        <field name="subject">Reclamo {{ object.name }}</field>
+        <field name="email_from"> {{ object.company_id.name }} &lt; {{ object.company_id.email }} &gt; </field>
+        <field name="email_to">{{ object.consumer_email }}</field>
+        <field name="lang">{{ object.company_id.partner_id.lang }}</field>
+        <field name="email_cc">{{ object.claim_user_id.name }}  &lt; {{ object.claim_user_id.email }} &gt;</field>
+        <field name="reply_to">{{ object.claim_user_id.name }}  &lt; {{ object.claim_user_id.email }} &gt;</field>
+        <field name="body_html" type="html">
+                <p style="border-radius:0px;border-style:none;padding:0px;margin:0px 0 16px 0;box-sizing:border-box;border-left-width:0px;border-bottom-width:0px;border-right-width:0px;border-top-width:0px;" data-oe-version="1.2">
+                    Hola <t t-out="object.consumer_name">Miguel</t>,
+                    <strong style="border-radius:0px;border-style:none;padding:0px;margin:0px;box-sizing:border-box;border-left-width:0px;border-bottom-width:0px;border-right-width:0px;border-top-width:0px;font-weight:bolder;">Su Reclamo ha sido recibido</strong>, y nos estaremos comunicando con usted en los próximos <t t-out="object.company_id.default_claim_attention_period">7</t> días para brindarle una solución.
+                </p>
+                <br/>
+                <br/>
+                <t t-if="object.claim_user_id and object.claim_user_id.signature">
+                    <t t-out="object.claim_user_id.signature">Responsable de Reclamo</t>
+                </t>
+        </field>
+        <field name="report_template_ids" eval="[(4,ref('l10n_pe_libro_reclamaciones.report_libro_reclamaciones'))]"/>
+    </record>
+
+
+</odoo>

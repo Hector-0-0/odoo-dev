@@ -11,7 +11,7 @@ Facilita el registro, seguimiento y generación de reportes relacionados con las
 cumplimiento legal y mejorando la atención al cliente.
     """,
     'category': 'Other',
-    'depends': ['base_setup', 'base', 'mail', 'l10n_pe'],
+    'depends': ['base_setup', 'base', 'mail', 'l10n_pe', 'website'],
     'installable': True,
     'application': True,
     'license': 'LGPL-3',
@@ -23,5 +23,12 @@ cumplimiento legal y mejorando la atención al cliente.
         'views/res_config_settings.xml',
         'report/report.xml',
         'report/report_libro_reclamaciones.xml',
+        'data/mail_template.xml',
+        'template/web_form_libro_reclamaciones.xml',
     ],
+    'assets': {
+        'web.assets_frontend': [
+            'l10n_pe_libro_reclamaciones/static/src/js/libro_reclamaciones.js'
+        ]
+    }
 }

@@ -22,6 +22,8 @@
         <field name="arch" type="xml">
             <form>
                 <header>
+                    <button name="action_claim_sent" string="Enviar Correo" 
+                            type="object" icon="fa-envelope"/>
                     <button name="action_in_process" string="En Progreso" 
                             type="object" class="btn-primary" 
                             invisible="state != 'new'"/>
